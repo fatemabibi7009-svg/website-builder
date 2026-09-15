@@ -1,0 +1,7 @@
+{
+  "name": "Web Builder",
+  "description": "Mobile responsive website builder with touch drag-and-drop editor, pre-built templates, localhost server, static dist generator, and one-click Netlify deployment.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+
