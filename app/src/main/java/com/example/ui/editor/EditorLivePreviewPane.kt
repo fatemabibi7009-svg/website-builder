@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.view.View
 import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebResourceRequest
+import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.animation.AnimatedVisibility
@@ -478,10 +479,13 @@ fun EditorLivePreviewPane(
                             WebView(ctx).apply {
                                 // Disable hardware acceleration on emulator to prevent Mesa rendernode crashes
                                 setLayerType(View.LAYER_TYPE_SOFTWARE, null)
-                                settings.javaScriptEnabled = true
-                                settings.domStorageEnabled = true
-                                settings.useWideViewPort = true
-                                settings.loadWithOverviewMode = true
+                                settings.apply {
+                                    javaScriptEnabled = true
+                                    domStorageEnabled = true
+                                    useWideViewPort = true
+                                    loadWithOverviewMode = true
+                                    cacheMode = WebSettings.LOAD_NO_CACHE
+                                }
                                 setBackgroundColor(android.graphics.Color.TRANSPARENT)
 
                                 webViewClient = object : WebViewClient() {

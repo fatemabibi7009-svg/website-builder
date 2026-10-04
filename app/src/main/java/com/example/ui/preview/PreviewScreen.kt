@@ -6,6 +6,7 @@ import android.net.Uri
 import android.view.View
 import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebResourceRequest
+import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.foundation.BorderStroke
@@ -326,6 +327,7 @@ fun PreviewScreen(
                                             databaseEnabled = true
                                             useWideViewPort = true
                                             loadWithOverviewMode = true
+                                            cacheMode = WebSettings.LOAD_NO_CACHE
                                             allowFileAccess = true
                                             allowContentAccess = true
                                             mediaPlaybackRequiresUserGesture = false
