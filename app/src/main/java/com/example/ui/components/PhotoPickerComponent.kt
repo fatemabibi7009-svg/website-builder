@@ -38,6 +38,8 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.PhotoLibrary
+import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.Undo
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -50,6 +52,8 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -122,6 +126,9 @@ fun PhotoPickerComponent(
     val coroutineScope = rememberCoroutineScope()
     var isSaving by remember { mutableStateOf(false) }
     var showUrlDialog by remember { mutableStateOf(false) }
+    var showDitherDialog by remember { mutableStateOf(false) }
+    var originalBackupUrl by remember { mutableStateOf<String?>(null) }
+    var autoDitherOnUpload by remember { mutableStateOf(false) }
     var urlInputText by remember(currentImageUrl) { mutableStateOf(currentImageUrl) }
     var statusMessage by remember { mutableStateOf<String?>(null) }
 
@@ -137,8 +144,12 @@ fun PhotoPickerComponent(
                 }
                 isSaving = false
                 if (persistentPath != null) {
+                    originalBackupUrl = persistentPath
                     onImageChanged(persistentPath)
                     statusMessage = "Photo selected from device gallery"
+                    if (autoDitherOnUpload) {
+                        showDitherDialog = true
+                    }
                 } else {
                     statusMessage = "Failed to copy photo from gallery"
                 }
@@ -148,6 +159,7 @@ fun PhotoPickerComponent(
 
     val isAssetPresent = currentImageUrl.isNotBlank()
     val isLocalDeviceAsset = currentImageUrl.startsWith("file://") || currentImageUrl.startsWith("content://")
+    val isDithered = currentImageUrl.contains("dither_")
 
     Card(
         modifier = modifier
@@ -203,18 +215,36 @@ fun PhotoPickerComponent(
                 }
 
                 if (isAssetPresent) {
-                    Box(
-                        modifier = Modifier
-                            .clip(CircleShape)
-                            .background(if (isLocalDeviceAsset) BrandEmerald.copy(alpha = 0.2f) else BrandCyan.copy(alpha = 0.2f))
-                            .padding(horizontal = 8.dp, vertical = 3.dp)
-                    ) {
-                        Text(
-                            text = if (isLocalDeviceAsset) "Gallery Photo" else "Stock Asset",
-                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                            color = if (isLocalDeviceAsset) BrandEmerald else BrandCyan,
-                            fontSize = 10.sp
-                        )
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        if (isDithered) {
+                            Box(
+                                modifier = Modifier
+                                    .clip(CircleShape)
+                                    .background(Color(0xFF00F0FF).copy(alpha = 0.2f))
+                                    .border(1.dp, Color(0xFF00F0FF), CircleShape)
+                                    .padding(horizontal = 8.dp, vertical = 3.dp)
+                            ) {
+                                Text(
+                                    text = "👾 4-Bit Dithered",
+                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                    color = Color(0xFF00F0FF),
+                                    fontSize = 10.sp
+                                )
+                            }
+                        }
+                        Box(
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .background(if (isLocalDeviceAsset) BrandEmerald.copy(alpha = 0.2f) else BrandCyan.copy(alpha = 0.2f))
+                                .padding(horizontal = 8.dp, vertical = 3.dp)
+                        ) {
+                            Text(
+                                text = if (isLocalDeviceAsset) "Gallery Photo" else "Stock Asset",
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                color = if (isLocalDeviceAsset) BrandEmerald else BrandCyan,
+                                fontSize = 10.sp
+                            )
+                        }
                     }
                 }
             }
@@ -262,6 +292,23 @@ fun PhotoPickerComponent(
                             )
 
                             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Button(
+                                    onClick = { showDitherDialog = true },
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00F0FF)),
+                                    shape = RoundedCornerShape(6.dp),
+                                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                                    modifier = Modifier.testTag("button_open_4bit_dither_overlay")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.AutoAwesome,
+                                        contentDescription = null,
+                                        tint = Color.Black,
+                                        modifier = Modifier.size(13.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("4-Bit Dither", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.Black)
+                                }
+
                                 Button(
                                     onClick = {
                                         photoPickerLauncher.launch(
@@ -311,6 +358,56 @@ fun PhotoPickerComponent(
                             contentAlignment = Alignment.Center
                         ) {
                             CircularProgressIndicator(color = BrandIndigo, modifier = Modifier.size(32.dp))
+                        }
+                    }
+                }
+
+                // Dedicated 4-Bit Dither action controls below preview
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Button(
+                        onClick = { showDitherDialog = true },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFF160A2C)
+                        ),
+                        border = BorderStroke(1.dp, Color(0xFF00F0FF)),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("btn_trigger_4bit_dither")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.AutoAwesome,
+                            contentDescription = null,
+                            tint = Color(0xFF00F0FF),
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = if (isDithered) "Modify 4-Bit Dither Effect" else "Apply 4-Bit Anime Dither Filter",
+                            color = Color(0xFF00F0FF),
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 12.sp
+                        )
+                    }
+
+                    if (originalBackupUrl != null && originalBackupUrl != currentImageUrl) {
+                        OutlinedButton(
+                            onClick = {
+                                onImageChanged(originalBackupUrl!!)
+                                statusMessage = "Reverted to original photo"
+                            },
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 6.dp),
+                            modifier = Modifier.testTag("btn_revert_original_photo")
+                        ) {
+                            Icon(Icons.Default.Undo, contentDescription = null, modifier = Modifier.size(14.dp), tint = Color(0xFF94A3B8))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Original", fontSize = 11.sp, color = Color(0xFF94A3B8))
                         }
                     }
                 }
@@ -511,6 +608,50 @@ fun PhotoPickerComponent(
                 }
             }
 
+            // Auto-Dither on Upload Toggle Switch
+            Spacer(modifier = Modifier.height(10.dp))
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = MaterialTheme.colorScheme.surface,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.25f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("🌸", fontSize = 14.sp)
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Column {
+                            Text(
+                                text = "Auto 4-Bit Dither on Upload",
+                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = "Instantly apply retro anime filter to newly selected photos",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    Switch(
+                        checked = autoDitherOnUpload,
+                        onCheckedChange = { autoDitherOnUpload = it },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = Color(0xFF00F0FF),
+                            checkedTrackColor = Color(0xFF00F0FF).copy(alpha = 0.4f)
+                        ),
+                        modifier = Modifier.testTag("switch_auto_4bit_dither")
+                    )
+                }
+            }
+
             // Status message feedback
             statusMessage?.let { msg ->
                 Spacer(modifier = Modifier.height(6.dp))
@@ -522,5 +663,20 @@ fun PhotoPickerComponent(
                 )
             }
         }
+    }
+
+    // Interactive 4-Bit Anime Dither Studio Dialog
+    if (showDitherDialog && isAssetPresent) {
+        Anime4BitDitherDialog(
+            sourceImageUrl = currentImageUrl,
+            onDismiss = { showDitherDialog = false },
+            onApplyDither = { ditheredUri ->
+                if (originalBackupUrl == null) {
+                    originalBackupUrl = currentImageUrl
+                }
+                onImageChanged(ditheredUri)
+                statusMessage = "✨ 4-Bit Anime Dither effect applied!"
+            }
+        )
     }
 }

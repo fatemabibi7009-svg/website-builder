@@ -21,6 +21,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddPhotoAlternate
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.PhotoLibrary
@@ -28,6 +29,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -41,11 +43,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -54,11 +58,15 @@ import androidx.compose.ui.unit.sp
 import com.example.data.model.BlockType
 import com.example.data.model.WebBlockEntity
 import com.example.data.model.WebsiteEntity
+import com.example.generator.PixelDitherEngine
+import com.example.ui.components.ANIME_QUICK_PRESETS
 import com.example.ui.components.PhotoPickerComponent
+import com.example.ui.components.playPixelAudioBlip
 import com.example.ui.theme.BrandAmber
 import com.example.ui.theme.BrandCyan
 import com.example.ui.theme.BrandEmerald
 import com.example.ui.theme.BrandIndigo
+import kotlinx.coroutines.launch
 
 data class TemplateAssetEntry(
     val key: String,
@@ -81,6 +89,10 @@ fun TemplateAssetManagerSheet(
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var activeFilter by remember { mutableStateOf("All") }
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    var isBatchDithering by remember { mutableStateOf(false) }
+    var batchProgress by remember { mutableStateOf<String?>(null) }
 
     // Parse all image assets across the current template/website
     val assetEntries = remember(blocks) {
@@ -300,6 +312,77 @@ fun TemplateAssetManagerSheet(
                             color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurface,
                             modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
                         )
+                    }
+                }
+            }
+
+            // Batch 4-Bit Anime Dither Card
+            Spacer(modifier = Modifier.height(10.dp))
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("card_batch_4bit_dither"),
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF130924)),
+                border = BorderStroke(1.dp, Color(0xFF00F0FF).copy(alpha = 0.5f))
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("🌸", fontSize = 14.sp)
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "4-BIT ANIME DITHER PIPELINE",
+                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Black),
+                                color = Color(0xFF00F0FF)
+                            )
+                        }
+                        Text(
+                            text = batchProgress ?: "Convert all template images into 4-bit PC-98 anime pixel art",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (isBatchDithering) Color(0xFFFF007F) else Color(0xFF94A3B8)
+                        )
+                    }
+
+                    Button(
+                        onClick = {
+                            if (isBatchDithering) return@Button
+                            isBatchDithering = true
+                            playPixelAudioBlip(1046.5, 0.05)
+                            coroutineScope.launch {
+                                val activeAssets = assetEntries.filter { it.currentUrl.isNotBlank() }
+                                val preset = ANIME_QUICK_PRESETS.first().config
+                                for ((idx, asset) in activeAssets.withIndex()) {
+                                    batchProgress = "Dithering asset ${idx + 1}/${activeAssets.size}..."
+                                    val saved = PixelDitherEngine.processAndSaveImage(context, asset.currentUrl, preset)
+                                    if (saved != null) {
+                                        asset.onReplace(saved)
+                                    }
+                                }
+                                batchProgress = "✓ All ${activeAssets.size} assets 4-bit dithered!"
+                                isBatchDithering = false
+                                playPixelAudioBlip(1567.98, 0.08)
+                            }
+                        },
+                        enabled = !isBatchDithering && assetEntries.any { it.currentUrl.isNotBlank() },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00F0FF)),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        if (isBatchDithering) {
+                            CircularProgressIndicator(color = Color.Black, modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Dithering...", fontSize = 11.sp, color = Color.Black, fontWeight = FontWeight.Bold)
+                        } else {
+                            Icon(imageVector = Icons.Default.AutoAwesome, contentDescription = null, tint = Color.Black, modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Dither All", fontSize = 11.sp, color = Color.Black, fontWeight = FontWeight.Bold)
+                        }
                     }
                 }
             }
