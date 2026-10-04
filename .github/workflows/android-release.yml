@@ -43,8 +43,10 @@ jobs:
       # fails with "Failed to find package 'tools'".
       - name: Install SDK platforms and build tools
         run: |
-          yes | sdkmanager --licenses > /dev/null 2>&1 || true
-          sdkmanager --install "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+          SDKMANAGER="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$SDKMANAGER" --licenses > /dev/null 2>&1 || true
+          "$SDKMANAGER" --install "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+          echo "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
 
       # Required secrets: STORE_PASSWORD, KEY_ALIAS, KEY_PASSWORD and a
       # KEYSTORE_PATH pointing at the uploaded keystore file.
