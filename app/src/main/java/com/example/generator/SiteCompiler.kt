@@ -13,6 +13,53 @@ object SiteCompiler {
 
     data class PageDef(val slug: String, val title: String)
 
+    /**
+     * Picks a structural layout variant for a block.
+     *
+     * Every block type used to have exactly ONE hardcoded DOM shape, so all
+     * 30+ templates produced the same page with a different palette. Variants
+     * give each block real structural variety.
+     *
+     * The seed mixes the site's persisted slug with the block's persisted
+     * position. It deliberately avoids the block id, because block ids are
+     * regenerated as random UUIDs and seeding on them made the chosen layout
+     * change on every recompile. It also avoids seeding on position alone,
+     * because templates place sections at fixed indexes (the hero is almost
+     * always block 1), which collapsed nearly every site onto one variant.
+     * Slug + position is stable across recompiles and still spreads layouts
+     * across different sites.
+     */
+    private fun layoutVariant(siteSeed: String, block: WebBlockEntity, variantCount: Int): Int {
+        if (variantCount <= 1) return 0
+        var seed = siteSeed.hashCode()
+        seed = 31 * seed + block.type.ordinal
+        seed = 31 * seed + block.orderIndex
+        return ((seed % variantCount) + variantCount) % variantCount
+    }
+
+    // Structural layout names applied as a `layout-*` class on the section.
+    // CSS in buildCss() targets these to reshape the shared card markup into
+    // genuinely different compositions.
+    private val featureLayouts = arrayOf("grid3", "bento", "rows")
+    private val serviceLayouts = arrayOf("grid3", "wide")
+    private val galleryLayouts = arrayOf("grid3", "masonry")
+    private val pricingLayouts = arrayOf("cards", "rows")
+    private val statsLayouts = arrayOf("cards", "strip")
+    private val testimonialLayouts = arrayOf("feature", "grid")
+
+    // Entrance effects the stylesheet knows how to render. A site keeps its
+    // chosen family, but when the site is still on the default style the
+    // sections rotate through these so pages do not all animate identically.
+    private val animEffects = arrayOf("fade-up", "slide-left", "soft-pop", "zoom-in", "fade-in", "flip-up")
+
+    private fun resolveAnimEffect(block: WebBlockEntity, website: WebsiteEntity?): String {
+        val perBlock = block.animationEffect.takeIf { it.isNotBlank() && it != "default" }
+        if (perBlock != null) return perBlock
+        val siteStyle = website?.animationStyle?.takeIf { it.isNotBlank() } ?: "fade-up"
+        if (siteStyle != "fade-up") return siteStyle
+        return animEffects[layoutVariant(website?.slug.orEmpty(), block, animEffects.size)]
+    }
+
     fun parsePages(pagesJson: String, defaultTitle: String = "Home"): List<PageDef> {
         if (pagesJson.isBlank()) return listOf(PageDef("index", defaultTitle.ifBlank { "Home" }))
         return try {
@@ -235,7 +282,7 @@ object SiteCompiler {
         }
         val lower = buttonText.lowercase()
         return when {
-            lower.contains("whatsapp") -> "https://wa.me/919876543210"
+            lower.contains("whatsapp") -> "#contact"
             lower.contains("wizard") || lower.contains("estimator") || lower.contains("estimate") || lower.contains("booking") || lower.contains("quote") || blockType == BlockType.MULTISTEP_WIZARD -> "#wizard"
             lower.contains("contact") || lower.contains("message") || lower.contains("talk") || lower.contains("reach") || lower.contains("inquir") -> "#contact"
             lower.contains("subscri") || lower.contains("news") || lower.contains("digest") || lower.contains("journal") || blockType == BlockType.NEWSLETTER -> "#newsletter"
@@ -291,6 +338,7 @@ object SiteCompiler {
             if (block.alignment.isNotBlank()) append("text-align: ${block.alignment}; ")
         }
         val styleAttr = if (customStyle.isNotBlank()) " style=\"$customStyle\"" else ""
+        val siteSeed = website?.slug?.takeIf { it.isNotBlank() } ?: website?.title.orEmpty()
         val aliases = when (block.type) {
             BlockType.WHATSAPP_SHOP -> "shop bags store catalog order custom-order cart"
             BlockType.MULTISTEP_WIZARD -> "wizard booking quote custom-order estimator application calculator builder"
@@ -312,7 +360,7 @@ object SiteCompiler {
             BlockType.IMAGE_CAROUSEL -> "carousel slider gallery photos showcase"
             else -> ""
         }
-        val animEffect = if (block.animationEffect != "default" && block.animationEffect.isNotBlank()) block.animationEffect else (website?.animationStyle ?: "fade-up")
+        val animEffect = resolveAnimEffect(block, website)
         val animAttr = if (animEffect != "none" && block.type != BlockType.NAVBAR && block.type != BlockType.FOOTER) " data-animate=\"$animEffect\"" else ""
         val blockIdAttr = " id=\"${block.type.name.lowercase()}\" data-aliases=\"$aliases\" data-block-id=\"${block.id}\" data-block-type=\"${block.type.name}\"$animAttr"
 
@@ -355,8 +403,12 @@ object SiteCompiler {
             }
 
             BlockType.HERO -> {
+                val heroVariant = layoutVariant(siteSeed, block, 3)
                 buildString {
-                    appendLine("  <section class=\"hero-section\"$blockIdAttr$styleAttr>")
+                    appendLine("  <section class=\"hero-section hero--v$heroVariant\"$blockIdAttr$styleAttr>")
+                    if (heroVariant == 2 && block.imageUrl.isNotBlank()) {
+                        appendLine("    <div class=\"hero-bg\" style=\"background-image:url('${escapeHtml(block.imageUrl)}')\"></div>")
+                    }
                     appendLine("    <div class=\"container hero-container\">")
                     if (block.subtitle.isNotBlank()) {
                         appendLine("      <div class=\"hero-badge\"><span class=\"badge-dot\"></span>${escapeHtml(block.subtitle)}</div>")
@@ -415,9 +467,9 @@ object SiteCompiler {
                             "Weekly" to "Curated Issues"
                         )
                         else -> listOf(
-                            "99.99%" to "Edge Availability",
-                            "&lt; 1ms" to "Global Latency",
-                            "10k+" to "Active Builders"
+                            "Trusted" to "By Our Customers",
+                            "Quality" to "Built To Last",
+                            "Service" to "Always Here To Help"
                         )
                     }
                     appendLine("      <div class=\"hero-proof-bar\">")
@@ -434,7 +486,7 @@ object SiteCompiler {
             BlockType.FEATURES -> {
                 val items = block.content.split("|").filter { it.isNotBlank() }
                 buildString {
-                    appendLine("  <section class=\"features-section\"$blockIdAttr$styleAttr>")
+                    appendLine("  <section class=\"features-section layout-${featureLayouts[layoutVariant(siteSeed, block, 3)]}\"$blockIdAttr$styleAttr>")
                     appendLine("    <div class=\"container\">")
                     if (block.title.isNotBlank()) appendLine("      <h2 class=\"section-title\">${escapeHtml(block.title)}</h2>")
                     if (block.subtitle.isNotBlank()) appendLine("      <p class=\"section-subtitle\">${escapeHtml(block.subtitle)}</p>")
@@ -504,7 +556,7 @@ object SiteCompiler {
             BlockType.SERVICES -> {
                 val items = block.content.split("|").filter { it.isNotBlank() }
                 buildString {
-                    appendLine("  <section class=\"services-section\"$blockIdAttr$styleAttr>")
+                    appendLine("  <section class=\"services-section layout-${serviceLayouts[layoutVariant(siteSeed, block, 2)]}\"$blockIdAttr$styleAttr>")
                     appendLine("    <div class=\"container\">")
                     if (block.title.isNotBlank()) appendLine("      <h2 class=\"section-title\">${escapeHtml(block.title)}</h2>")
                     if (block.subtitle.isNotBlank()) appendLine("      <p class=\"section-subtitle\">${escapeHtml(block.subtitle)}</p>")
@@ -531,7 +583,7 @@ object SiteCompiler {
 
             BlockType.TESTIMONIALS -> {
                 buildString {
-                    appendLine("  <section class=\"testimonial-section\"$blockIdAttr$styleAttr>")
+                    appendLine("  <section class=\"testimonial-section layout-${testimonialLayouts[layoutVariant(siteSeed, block, 2)]}\"$blockIdAttr$styleAttr>")
                     appendLine("    <div class=\"container\">")
                     if (block.title.isNotBlank()) appendLine("      <h2 class=\"section-title\">${escapeHtml(block.title)}</h2>")
                     appendLine("      <div class=\"testimonial-card\">")
@@ -559,7 +611,7 @@ object SiteCompiler {
             BlockType.PRICING -> {
                 val tiers = block.content.split("|").filter { it.isNotBlank() }
                 buildString {
-                    appendLine("  <section class=\"pricing-section\"$blockIdAttr$styleAttr>")
+                    appendLine("  <section class=\"pricing-section layout-${pricingLayouts[layoutVariant(siteSeed, block, 2)]}\"$blockIdAttr$styleAttr>")
                     appendLine("    <div class=\"container\">")
                     if (block.title.isNotBlank()) appendLine("      <h2 class=\"section-title\">${escapeHtml(block.title)}</h2>")
                     if (block.subtitle.isNotBlank()) appendLine("      <p class=\"section-subtitle\">${escapeHtml(block.subtitle)}</p>")
@@ -618,7 +670,7 @@ object SiteCompiler {
             BlockType.GALLERY -> {
                 val images = block.content.split("|").filter { it.isNotBlank() }
                 buildString {
-                    appendLine("  <section class=\"gallery-section\"$blockIdAttr$styleAttr>")
+                    appendLine("  <section class=\"gallery-section layout-${galleryLayouts[layoutVariant(siteSeed, block, 2)]}\"$blockIdAttr$styleAttr>")
                     appendLine("    <div class=\"container\">")
                     if (block.title.isNotBlank()) appendLine("      <h2 class=\"section-title\">${escapeHtml(block.title)}</h2>")
                     if (block.subtitle.isNotBlank()) appendLine("      <p class=\"section-subtitle\">${escapeHtml(block.subtitle)}</p>")
@@ -668,36 +720,47 @@ object SiteCompiler {
                     val emailCandidate = when {
                         block.buttonUrl.startsWith("mailto:") -> block.buttonUrl.removePrefix("mailto:").trim()
                         block.content.contains("@") -> block.content.split(" ", "\n", "|", "\t").firstOrNull { it.contains("@") && !it.contains("<") }?.trim(';', ',', '.', ':', '(', ')')
-                        else -> "hello@mysite.com"
-                    } ?: "hello@mysite.com"
+                        else -> null
+                    }?.takeIf { it.isNotBlank() }
 
                     val phoneCandidate = when {
                         block.buttonUrl.startsWith("tel:") -> block.buttonUrl.removePrefix("tel:").trim()
                         block.buttonUrl.startsWith("https://wa.me/") -> "+${block.buttonUrl.removePrefix("https://wa.me/").trim()}"
                         block.buttonUrl.all { it.isDigit() || it == '+' } && block.buttonUrl.length >= 8 -> block.buttonUrl.trim()
-                        else -> "+1 (800) 555-0199"
-                    }
+                        else -> null
+                    }?.takeIf { it.isNotBlank() }
 
                     val locationCandidate = when {
                         block.subtitle.isNotBlank() && (block.subtitle.contains("Street", ignoreCase = true) || block.subtitle.contains("Ave", ignoreCase = true) || block.subtitle.contains("Portland", ignoreCase = true) || block.subtitle.contains("San Francisco", ignoreCase = true) || block.subtitle.contains("Tokyo", ignoreCase = true) || block.subtitle.contains("London", ignoreCase = true) || block.subtitle.contains("NY", ignoreCase = true) || block.subtitle.contains("Road", ignoreCase = true)) -> block.subtitle
                         block.content.contains("Open Daily", ignoreCase = true) -> block.subtitle.ifBlank { "Flagship Roastery & Cafe" }
-                        else -> "Global Edge • San Francisco, CA"
-                    }
+                        else -> null
+                    }?.takeIf { it.isNotBlank() }
 
-                    appendLine("          <div class=\"contact-details\">")
-                    appendLine("            <div class=\"contact-item\">")
-                    appendLine("              <span class=\"contact-icon\">✉️</span>")
-                    appendLine("              <div><strong>Email</strong><br><a href=\"mailto:${escapeHtml(emailCandidate)}\">${escapeHtml(emailCandidate)}</a></div>")
-                    appendLine("            </div>")
-                    appendLine("            <div class=\"contact-item\">")
-                    appendLine("              <span class=\"contact-icon\">📞</span>")
-                    appendLine("              <div><strong>Call</strong><br><a href=\"tel:${escapeHtml(phoneCandidate)}\">${escapeHtml(phoneCandidate)}</a></div>")
-                    appendLine("            </div>")
-                    appendLine("            <div class=\"contact-item\">")
-                    appendLine("              <span class=\"contact-icon\">📍</span>")
-                    appendLine("              <div><strong>Location</strong><br><span>${escapeHtml(locationCandidate)}</span></div>")
-                    appendLine("            </div>")
-                    appendLine("          </div>")
+                    // Only print contact rows backed by real content. Inventing
+                    // a phone number, email or address shipped obvious fake
+                    // details on every user site that had no contact block set.
+                    if (emailCandidate != null || phoneCandidate != null || locationCandidate != null) {
+                        appendLine("          <div class=\"contact-details\">")
+                        if (emailCandidate != null) {
+                            appendLine("            <div class=\"contact-item\">")
+                            appendLine("              <span class=\"contact-icon\">✉️</span>")
+                            appendLine("              <div><strong>Email</strong><br><a href=\"mailto:${escapeHtml(emailCandidate)}\">${escapeHtml(emailCandidate)}</a></div>")
+                            appendLine("            </div>")
+                        }
+                        if (phoneCandidate != null) {
+                            appendLine("            <div class=\"contact-item\">")
+                            appendLine("              <span class=\"contact-icon\">📞</span>")
+                            appendLine("              <div><strong>Call</strong><br><a href=\"tel:${escapeHtml(phoneCandidate)}\">${escapeHtml(phoneCandidate)}</a></div>")
+                            appendLine("            </div>")
+                        }
+                        if (locationCandidate != null) {
+                            appendLine("            <div class=\"contact-item\">")
+                            appendLine("              <span class=\"contact-icon\">📍</span>")
+                            appendLine("              <div><strong>Location</strong><br><span>${escapeHtml(locationCandidate)}</span></div>")
+                            appendLine("            </div>")
+                        }
+                        appendLine("          </div>")
+                    }
                     appendLine("        </div>")
 
                     val endpointUrl = when {
@@ -706,7 +769,7 @@ object SiteCompiler {
                         else -> ""
                     }
                     val endpointAttr = if (endpointUrl.isNotBlank()) " data-endpoint=\"${escapeHtml(endpointUrl)}\"" else ""
-                    val emailAttr = " data-email=\"${escapeHtml(emailCandidate)}\""
+                    val emailAttr = if (emailCandidate != null) " data-email=\"${escapeHtml(emailCandidate)}\"" else ""
                     appendLine("        <form id=\"contactForm\" class=\"contact-form\"$endpointAttr$emailAttr>")
                     appendLine("          <div class=\"form-group\">")
                     appendLine("            <label for=\"contactName\">Full Name</label>")
@@ -776,7 +839,7 @@ object SiteCompiler {
             BlockType.STATS -> {
                 val stats = block.content.split("|").map { it.trim() }.filter { it.isNotBlank() }
                 buildString {
-                    appendLine("  <section class=\"stats-section\"$blockIdAttr$styleAttr>")
+                    appendLine("  <section class=\"stats-section layout-${statsLayouts[layoutVariant(siteSeed, block, 2)]}\"$blockIdAttr$styleAttr>")
                     appendLine("    <div class=\"container stats-container\">")
                     if (block.subtitle.isNotBlank()) appendLine("      <div class=\"section-header\"><span class=\"badge\">${escapeHtml(block.subtitle)}</span></div>")
                     if (block.title.isNotBlank()) appendLine("      <h2 class=\"section-title\">${escapeHtml(block.title)}</h2>")
@@ -926,7 +989,7 @@ object SiteCompiler {
                                 lower.contains("behance") -> "https://behance.com"
                                 lower.contains("bluesky") || lower.contains("bsky") -> "https://bsky.app"
                                 lower.contains("mastodon") -> "https://mastodon.social"
-                                lower.contains("whatsapp") -> "https://wa.me/919876543210"
+                                lower.contains("whatsapp") -> "#"
                                 lower.contains("tiktok") -> "https://tiktok.com"
                                 lower.contains("facebook") -> "https://facebook.com"
                                 lower.contains("yelp") -> "https://yelp.com"
@@ -1450,6 +1513,91 @@ $buttonStylesCss
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
   gap: 2rem;
+}
+
+/* ---- Layout variants -------------------------------------------------
+   Every block used to render one fixed composition, so all sites looked
+   identical. These rules recompose the shared card markup per layout
+   class emitted by SiteCompiler.layoutVariant(). */
+
+.features-section.layout-bento .grid-3 { grid-template-columns: repeat(6, 1fr); }
+.features-section.layout-bento .feature-card { grid-column: span 2; }
+.features-section.layout-bento .feature-card:first-child {
+  grid-column: span 6;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 2rem;
+  background: linear-gradient(135deg, var(--bg-card), var(--bg-secondary));
+}
+.features-section.layout-bento .feature-card:first-child .icon-badge { grid-row: span 2; }
+
+.features-section.layout-rows .grid-3 { grid-template-columns: 1fr; gap: 1rem; }
+.features-section.layout-rows .feature-card { display: flex; align-items: center; gap: 1.5rem; padding: 1.5rem 2rem; }
+.features-section.layout-rows .feature-card .icon-badge { flex: 0 0 auto; }
+.features-section.layout-rows .feature-card .card-title { margin: 0 0 .25rem; }
+.features-section.layout-rows .feature-card:nth-child(even) { margin-left: 8%; }
+
+.services-section.layout-wide .grid-3 { grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); }
+.services-section.layout-wide .service-card { display: flex; flex-direction: column; }
+.services-section.layout-wide .service-link { margin-top: auto; padding-top: 1.25rem; }
+
+.gallery-section.layout-masonry .grid-3 {
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  grid-auto-rows: 220px;
+}
+.gallery-section.layout-masonry .gallery-item { overflow: hidden; border-radius: 1.25rem; }
+.gallery-section.layout-masonry .gallery-item:nth-child(3n+1) { grid-row: span 2; }
+.gallery-section.layout-masonry .gallery-item img { height: 100%; object-fit: cover; }
+
+.pricing-section.layout-rows .grid-3 { grid-template-columns: 1fr; gap: 1rem; }
+.pricing-section.layout-rows .pricing-card {
+  display: grid;
+  grid-template-columns: 1.1fr .8fr 1.4fr auto;
+  align-items: center;
+  gap: 1.5rem;
+  padding: 1.5rem 2rem;
+}
+.pricing-section.layout-rows .pricing-features { display: flex; flex-wrap: wrap; gap: .5rem 1.25rem; }
+.pricing-section.layout-rows .pricing-card .btn-block { width: auto; }
+
+.stats-section.layout-strip .stats-grid { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
+.stats-section.layout-strip .stat-card { padding: 1.25rem 1rem; }
+.stats-section.layout-strip .stat-number { font-size: 2rem; }
+
+.testimonial-section.layout-grid .testimonial-card { max-width: none; }
+
+.hero-section.hero--v1 .hero-container {
+  display: grid;
+  grid-template-columns: 1.05fr .95fr;
+  align-items: center;
+  gap: 3.5rem;
+  text-align: left;
+}
+.hero-section.hero--v1 .hero-media-wrap { order: -1; }
+.hero-section.hero--v1 .hero-proof-bar { grid-column: 1 / -1; justify-content: flex-start; }
+
+.hero-section.hero--v2 { position: relative; isolation: isolate; padding: 7rem 0 5rem; }
+.hero-section.hero--v2 .hero-bg {
+  position: absolute; inset: 0; z-index: -2;
+  background-size: cover; background-position: center;
+}
+.hero-section.hero--v2::after {
+  content: ""; position: absolute; inset: 0; z-index: -1;
+  background: linear-gradient(180deg, rgba(0,0,0,.55), rgba(0,0,0,.78));
+}
+.hero-section.hero--v2 .hero-title,
+.hero-section.hero--v2 .hero-desc,
+.hero-section.hero--v2 .hero-badge { color: #fff; }
+
+@media (max-width: 900px) {
+  .features-section.layout-bento .grid-3 { grid-template-columns: 1fr; }
+  .features-section.layout-bento .feature-card,
+  .features-section.layout-bento .feature-card:first-child { grid-column: auto; grid-template-columns: 1fr; }
+  .features-section.layout-rows .feature-card:nth-child(even) { margin-left: 0; }
+  .pricing-section.layout-rows .pricing-card { grid-template-columns: 1fr; }
+  .hero-section.hero--v1 .hero-container { grid-template-columns: 1fr; }
+  .hero-section.hero--v1 .hero-media-wrap { order: 0; }
 }
 
 /* Cards */
@@ -2658,6 +2806,13 @@ body.light-theme .countdown-card {
 }
 [data-animate="soft-pop"] {
   transform: translateY(20px) scale(0.95);
+}
+[data-animate="fade-in"] {
+  opacity: 0;
+}
+[data-animate="flip-up"] {
+  transform: perspective(700px) rotateX(-14deg);
+  transform-origin: center bottom;
 }
 [data-animate].is-inview, [data-animate="none"] {
   opacity: 1;
