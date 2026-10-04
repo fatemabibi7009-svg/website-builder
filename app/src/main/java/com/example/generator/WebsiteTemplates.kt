@@ -30,6 +30,72 @@ object WebsiteTemplates {
                 template.themePreset.contains("arcade")
     }
 
+    private data class PagePlan(
+        val pages: List<Pair<String, String>>,
+        val move: Map<BlockType, String>
+    )
+
+    // Declared BEFORE allTemplates on purpose: object properties initialise in
+    // declaration order, and applyPagePlan() reads this map while allTemplates
+    // is still being built.
+    //
+    // Page titles deliberately mirror existing navbar labels so navigation
+    // resolves to real pages. Slugs are the lowercased, hyphenated title.
+    private val pagePlans: Map<String, PagePlan> = mapOf(
+        "saas_launch" to PagePlan(
+            pages = listOf("Features" to "features", "Pricing" to "pricing"),
+            move = mapOf(BlockType.FEATURES to "features", BlockType.PRICING to "pricing")
+        ),
+        "ecommerce_store" to PagePlan(
+            pages = listOf("Shop All" to "shop-all", "About" to "about"),
+            move = mapOf(BlockType.PRICING to "shop-all", BlockType.ABOUT to "about")
+        ),
+        "agency_studio" to PagePlan(
+            pages = listOf("Work" to "work", "Process" to "process", "Team" to "team"),
+            move = mapOf(BlockType.SERVICES to "work", BlockType.TIMELINE to "process", BlockType.TEAM to "team")
+        ),
+        "artisan_coffee_roastery" to PagePlan(
+            pages = listOf("Origins" to "origins", "Harvest Menu" to "harvest-menu"),
+            move = mapOf(BlockType.FEATURES to "origins", BlockType.PRICING to "harvest-menu")
+        ),
+        "dev_resume" to PagePlan(
+            pages = listOf("About" to "about", "Stack" to "stack", "Projects" to "projects"),
+            move = mapOf(BlockType.ABOUT to "about", BlockType.FEATURES to "stack", BlockType.TIMELINE to "projects")
+        ),
+        "creative_portfolio" to PagePlan(
+            pages = listOf("Work" to "work", "Philosophy" to "philosophy", "Services" to "services"),
+            move = mapOf(BlockType.GALLERY to "work", BlockType.ABOUT to "philosophy", BlockType.SERVICES to "services")
+        ),
+        "fitness_crossfit_club" to PagePlan(
+            pages = listOf("Programs" to "programs", "Pricing" to "pricing"),
+            move = mapOf(BlockType.FEATURES to "programs", BlockType.PRICING to "pricing")
+        ),
+        "modern_blog" to PagePlan(
+            pages = listOf("About" to "about"),
+            move = mapOf(BlockType.ABOUT to "about")
+        ),
+        "dental_aesthetic_clinic" to PagePlan(
+            pages = listOf("Treatments" to "treatments", "Pricing" to "pricing"),
+            move = mapOf(BlockType.FEATURES to "treatments", BlockType.PRICING to "pricing")
+        ),
+        "premier_whatsapp_shop" to PagePlan(
+            pages = listOf("Process" to "process", "FAQ" to "faq"),
+            move = mapOf(BlockType.TIMELINE to "process", BlockType.FAQ to "faq")
+        ),
+        "premier_4bit_akiba_arcade_store" to PagePlan(
+            pages = listOf("FAQ" to "faq"),
+            move = mapOf(BlockType.FAQ to "faq")
+        ),
+        "premier_4bit_sound_lab" to PagePlan(
+            pages = listOf("FAQ" to "faq"),
+            move = mapOf(BlockType.FAQ to "faq")
+        ),
+        "multistep_bakery_wizard" to PagePlan(
+            pages = listOf("Flavors" to "flavors"),
+            move = mapOf(BlockType.FEATURES to "flavors")
+        )
+    )
+
     val allTemplates: List<TemplateDefinition> = listOf(
         TemplateDefinition(
             id = "premier_whatsapp_shop",
@@ -3138,7 +3204,39 @@ object WebsiteTemplates {
                 )
             }
         )
-    )
+    ).map(::applyPagePlan)
+
+    /**
+     * Turns a single-page template into a real multi-page site.
+     *
+     * Only block types listed in the plan move; everything else (including the
+     * navbar and footer) stays on the index page. The compiler re-adds the
+     * navbar and footer to every generated sub-page automatically, and each
+     * page title matches an existing navbar label so the existing nav links
+     * resolve to real pages instead of dead anchors.
+     */
+    private fun applyPagePlan(template: TemplateDefinition): TemplateDefinition {
+        val plan = pagePlans[template.id] ?: return template
+        val base = template.createWebsite()
+        val pagesJson = buildString {
+            append("[{\"slug\":\"index\",\"title\":\"").append(base.title.replace("\"", "'")).append("\"}")
+            for ((title, slug) in plan.pages) {
+                append(",{\"slug\":\"").append(slug).append("\",\"title\":\"").append(title).append("\"}")
+            }
+            append("]")
+        }
+        return template.copy(
+            createWebsite = {
+                template.createWebsite().copy(pagesJson = pagesJson)
+            },
+            createBlocks = { websiteId ->
+                template.createBlocks(websiteId).map { block ->
+                    val slug = plan.move[block.type] ?: return@map block
+                    block.copy(pageSlug = slug)
+                }
+            }
+        )
+    }
 
     fun getDefaultTemplate(): TemplateDefinition = allTemplates.first()
 }
