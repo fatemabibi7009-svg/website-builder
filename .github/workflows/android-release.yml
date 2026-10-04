@@ -1,0 +1,110 @@
+name: Android Release
+
+on:
+  # Tag a release to publish, or trigger manually.
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      versionName:
+        description: 'Version name for the release (e.g. 1.0.1)'
+        required: true
+        default: '1.0.0'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build signed release
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Gradle runs first: the build cannot start without a JDK.
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle (wrapper + dependency cache)
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.3.1'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install SDK platforms and build tools
+        run: |
+          sdkmanager --install "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+          sdkmanager --licenses <<< $'y\ny\ny\ny\ny\ny\ny\ny\ny\ny\ny\n'
+
+      # Required secrets: STORE_PASSWORD, KEY_ALIAS, KEY_PASSWORD and a
+      # KEYSTORE_PATH pointing at the uploaded keystore file.
+      - name: Check signing secrets are present
+        env:
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          KEYSTORE_PATH: ${{ secrets.KEYSTORE_PATH }}
+        run: |
+          missing=""
+          [ -n "$STORE_PASSWORD" ] || missing="$missing STORE_PASSWORD"
+          [ -n "$KEY_ALIAS" ]     || missing="$missing KEY_ALIAS"
+          [ -n "$KEY_PASSWORD" ]  || missing="$missing KEY_PASSWORD"
+          [ -n "$KEYSTORE_PATH" ] || missing="$missing KEYSTORE_PATH"
+          if [ -n "$missing" ]; then
+            echo "::error::Missing required secrets:$missing"
+            exit 1
+          fi
+
+      # Gradle reads these from the environment for the release signing config.
+      - name: Restore release keystore
+        env:
+          KEYSTORE_B64: ${{ secrets.KEYSTORE_B64 }}
+          KEYSTORE_PATH: ${{ secrets.KEYSTORE_PATH }}
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          echo "$KEYSTORE_B64" | base64 --decode > "$KEYSTORE_PATH"
+          chmod 600 "$KEYSTORE_PATH"
+
+      # Stamp the version before building so the artifact is identifiable.
+      - name: Stamp version name
+        run: |
+          VERSION="${{ inputs.versionName }}"
+          if [ -z "$VERSION" ]; then VERSION="${GITHUB_REF_NAME#v}"; fi
+          echo "Building version $VERSION"
+          ./gradlew :app:assembleRelease :app:bundleRelease \
+            -PversionName="$VERSION" \
+            --stacktrace
+
+      - name: Upload release APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-builder-release-apk
+          path: app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload release bundle (AAB)
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-builder-release-aab
+          path: app/build/outputs/bundle/release/*.aab
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Attach APK to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: app/build/outputs/apk/release/*.apk
+          generate_release_notes: true

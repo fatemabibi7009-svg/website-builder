@@ -46,6 +46,10 @@ object SiteCompiler {
     private val pricingLayouts = arrayOf("cards", "rows")
     private val statsLayouts = arrayOf("cards", "strip")
     private val testimonialLayouts = arrayOf("feature", "grid")
+    private val aboutLayouts = arrayOf("split", "reversed")
+    private val faqLayouts = arrayOf("stack", "twocol")
+    private val ctaLayouts = arrayOf("banner", "card")
+    private val contactLayouts = arrayOf("formleft", "formright")
 
     // Entrance effects the stylesheet knows how to render. A site keeps its
     // chosen family, but when the site is still on the default style the
@@ -522,7 +526,7 @@ object SiteCompiler {
 
             BlockType.ABOUT -> {
                 buildString {
-                    appendLine("  <section class=\"about-section\"$blockIdAttr$styleAttr>")
+                    appendLine("  <section class=\"about-section layout-${aboutLayouts[layoutVariant(siteSeed, block, 2)]}\"$blockIdAttr$styleAttr>")
                     appendLine("    <div class=\"container about-container\">")
                     if (block.imageUrl.isNotBlank()) {
                         appendLine("      <div class=\"about-split-layout\">")
@@ -692,7 +696,7 @@ object SiteCompiler {
 
             BlockType.CTA -> {
                 buildString {
-                    appendLine("  <section class=\"cta-section\"$blockIdAttr$styleAttr>")
+                    appendLine("  <section class=\"cta-section layout-${ctaLayouts[layoutVariant(siteSeed, block, 2)]}\"$blockIdAttr$styleAttr>")
                     appendLine("    <div class=\"container cta-container\">")
                     appendLine("      <h2 class=\"cta-title\">${escapeHtml(block.title)}</h2>")
                     if (block.subtitle.isNotBlank()) appendLine("      <p class=\"cta-desc\">${escapeHtml(block.subtitle)}</p>")
@@ -707,7 +711,7 @@ object SiteCompiler {
 
             BlockType.CONTACT -> {
                 buildString {
-                    appendLine("  <section class=\"contact-section\"$blockIdAttr$styleAttr>")
+                    appendLine("  <section class=\"contact-section layout-${contactLayouts[layoutVariant(siteSeed, block, 2)]}\"$blockIdAttr$styleAttr>")
                     appendLine("    <div class=\"container contact-container\">")
                     if (block.title.isNotBlank()) appendLine("      <h2 class=\"section-title\">${escapeHtml(block.title)}</h2>")
                     if (block.subtitle.isNotBlank()) appendLine("      <p class=\"section-subtitle\">${escapeHtml(block.subtitle)}</p>")
@@ -795,7 +799,7 @@ object SiteCompiler {
             BlockType.FAQ -> {
                 val faqs = block.content.split("|").filter { it.isNotBlank() }
                 buildString {
-                    appendLine("  <section class=\"faq-section\"$blockIdAttr$styleAttr>")
+                    appendLine("  <section class=\"faq-section layout-${faqLayouts[layoutVariant(siteSeed, block, 2)]}\"$blockIdAttr$styleAttr>")
                     appendLine("    <div class=\"container faq-container\">")
                     if (block.title.isNotBlank()) appendLine("      <h2 class=\"section-title\">${escapeHtml(block.title)}</h2>")
                     if (block.subtitle.isNotBlank()) appendLine("      <p class=\"section-subtitle\">${escapeHtml(block.subtitle)}</p>")
@@ -1566,6 +1570,42 @@ $buttonStylesCss
 .stats-section.layout-strip .stat-number { font-size: 2rem; }
 
 .testimonial-section.layout-grid .testimonial-card { max-width: none; }
+
+/* Second wave of structural variants: about / faq / cta / contact. */
+
+.about-section.layout-reversed .about-split-layout { direction: rtl; }
+.about-section.layout-reversed .about-split-layout > * { direction: ltr; }
+
+.faq-section.layout-twocol .faq-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 1rem;
+  align-items: start;
+}
+
+.cta-section.layout-card .cta-container {
+  max-width: 760px;
+  background-color: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 2rem;
+  padding: 3.5rem 2.5rem;
+  margin-top: 2rem;
+  margin-bottom: 2rem;
+}
+.cta-section.layout-banner .cta-container { max-width: 1100px; }
+
+.contact-section.layout-formleft .contact-grid { direction: rtl; }
+.contact-section.layout-formleft .contact-grid > * { direction: ltr; }
+.contact-section.layout-formleft .contact-info-panel { order: 2; }
+.contact-section.layout-formright .contact-info-panel { order: 2; }
+
+@media (max-width: 900px) {
+  .about-section.layout-reversed .about-split-layout { direction: ltr; }
+  .faq-section.layout-twocol .faq-list { grid-template-columns: 1fr; }
+  .contact-section.layout-formleft .contact-grid { direction: ltr; }
+  .contact-section.layout-formleft .contact-info-panel,
+  .contact-section.layout-formright .contact-info-panel { order: initial; }
+}
 
 .hero-section.hero--v1 .hero-container {
   display: grid;
