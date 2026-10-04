@@ -34,13 +34,14 @@ jobs:
         with:
           gradle-version: '9.3.1'
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
+      # ubuntu-latest already ships the Android SDK with cmdline-tools.
+      # android-actions/setup-android@v3 is deliberately NOT used: it tries to
+      # install the legacy "tools" package, which Google removed, and the step
+      # fails with "Failed to find package 'tools'".
       - name: Install SDK platforms and build tools
         run: |
+          yes | sdkmanager --licenses > /dev/null 2>&1 || true
           sdkmanager --install "platform-tools" "platforms;android-36" "build-tools;36.0.0"
-          sdkmanager --licenses <<< $'y\ny\ny\ny\ny\ny\ny\ny\ny\ny\ny\n'
 
       # Everything the app needs must be assembled before packaging.
       - name: Assemble debug APK
