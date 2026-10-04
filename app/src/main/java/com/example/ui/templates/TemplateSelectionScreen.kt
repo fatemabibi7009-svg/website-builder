@@ -41,6 +41,7 @@ import androidx.compose.material.icons.filled.Coffee
 import androidx.compose.material.icons.filled.CropSquare
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Link
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.RocketLaunch
 import androidx.compose.material.icons.filled.Search
@@ -100,15 +101,20 @@ import com.example.ui.theme.BrandViolet
 fun TemplateSelectionScreen(
     currentWebsite: WebsiteEntity?,
     onSelectTemplate: (TemplateDefinition) -> Unit,
-    onContinueExisting: () -> Unit
+    onContinueExisting: () -> Unit,
+    isPremierUnlocked: Boolean = false,
+    onWatchAdToUnlock: () -> Unit = {}
 ) {
     var isGridView by remember { mutableStateOf(true) }
     var selectedCategory by remember { mutableStateOf("All") }
     var searchQuery by remember { mutableStateOf("") }
     var previewTemplate by remember { mutableStateOf<TemplateDefinition?>(null) }
+    var showWatchAdDialog by remember { mutableStateOf(false) }
+    var pendingPremierTemplate by remember { mutableStateOf<TemplateDefinition?>(null) }
 
     val categories = listOf(
         "All",
+        "👑 Premier & WhatsApp",
         "Startup & Tech",
         "Agency & Studio",
         "E-Commerce",
@@ -124,6 +130,7 @@ fun TemplateSelectionScreen(
         WebsiteTemplates.allTemplates.filter { tmpl ->
             val matchesCategory = when (selectedCategory) {
                 "All" -> true
+                "👑 Premier & WhatsApp" -> tmpl.isPremier || tmpl.id.contains("whatsapp") || tmpl.category.contains("Premier")
                 "Startup & Tech" -> tmpl.category.contains("Startup", ignoreCase = true) || tmpl.id.contains("saas")
                 "Agency & Studio" -> tmpl.category.contains("Agency", ignoreCase = true) || tmpl.id.contains("agency")
                 "E-Commerce" -> tmpl.category.contains("Commerce", ignoreCase = true) || tmpl.id.contains("store")
@@ -199,6 +206,71 @@ fun TemplateSelectionScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         lineHeight = 17.sp
                     )
+                }
+            }
+
+            // Premier Status Banner (Ad-gated unlock trigger)
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("premier_status_banner"),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = if (isPremierUnlocked) BrandEmerald.copy(alpha = 0.12f) else BrandAmber.copy(alpha = 0.12f)
+                ),
+                border = BorderStroke(1.dp, if (isPremierUnlocked) BrandEmerald.copy(alpha = 0.45f) else BrandAmber.copy(alpha = 0.45f))
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(38.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(if (isPremierUnlocked) BrandEmerald else BrandAmber),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = if (isPremierUnlocked) Icons.Default.Check else Icons.Default.AutoAwesome,
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                        Column {
+                            Text(
+                                text = if (isPremierUnlocked) "👑 Premier Stores Unlocked" else "👑 Premier Section • Watch 1 Ad to Unlock",
+                                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = if (isPremierUnlocked) "Full WhatsApp shopping app with multi-step checkout & photo upload active." else "Unlock multi-step WhatsApp store, interactive cart & custom photo upload.",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    if (!isPremierUnlocked) {
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Button(
+                            onClick = { showWatchAdDialog = true },
+                            colors = ButtonDefaults.buttonColors(containerColor = BrandAmber),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.testTag("btn_unlock_premier_ad")
+                        ) {
+                            Text("Watch Ad", fontWeight = FontWeight.Bold, color = Color.Black, fontSize = 12.sp)
+                        }
+                    }
                 }
             }
 
@@ -410,6 +482,15 @@ fun TemplateSelectionScreen(
         }
     }
 
+    val handleSelectWithAdGate: (TemplateDefinition) -> Unit = { template ->
+        if (template.isPremier && !isPremierUnlocked) {
+            pendingPremierTemplate = template
+            showWatchAdDialog = true
+        } else {
+            onSelectTemplate(template)
+        }
+    }
+
     Scaffold(
         topBar = {
             CenterAlignedTopAppBar(
@@ -528,11 +609,12 @@ fun TemplateSelectionScreen(
         if (isGridView) {
             TemplateThumbnailGrid(
                 templates = filteredTemplates,
-                onSelectTemplate = onSelectTemplate,
+                onSelectTemplate = handleSelectWithAdGate,
                 onPreviewTemplate = { previewTemplate = it },
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(innerPadding),
+                isPremierUnlocked = isPremierUnlocked,
                 headerContent = headerSection,
                 emptyContent = emptySection
             )
@@ -559,7 +641,8 @@ fun TemplateSelectionScreen(
                 items(filteredTemplates, key = { it.id }) { template ->
                     TemplateSelectionCard(
                         template = template,
-                        onSelect = { onSelectTemplate(template) },
+                        isPremierUnlocked = isPremierUnlocked,
+                        onSelect = { handleSelectWithAdGate(template) },
                         onPreview = { previewTemplate = template }
                     )
                 }
@@ -573,8 +656,26 @@ fun TemplateSelectionScreen(
             template = template,
             onDismiss = { previewTemplate = null },
             onSelect = {
+                val tmpl = template
                 previewTemplate = null
-                onSelectTemplate(template)
+                handleSelectWithAdGate(tmpl)
+            }
+        )
+    }
+
+    // Watch Ad to Unlock Premier Dialog
+    if (showWatchAdDialog) {
+        WatchAdDialog(
+            onDismiss = {
+                showWatchAdDialog = false
+                pendingPremierTemplate = null
+            },
+            onRewardEarned = {
+                onWatchAdToUnlock()
+                pendingPremierTemplate?.let { tmpl ->
+                    onSelectTemplate(tmpl)
+                    pendingPremierTemplate = null
+                }
             }
         )
     }
@@ -584,6 +685,7 @@ fun TemplateSelectionScreen(
 @Composable
 fun TemplateSelectionCard(
     template: TemplateDefinition,
+    isPremierUnlocked: Boolean = false,
     onSelect: () -> Unit,
     onPreview: () -> Unit = {}
 ) {
@@ -746,17 +848,30 @@ fun TemplateSelectionCard(
 
                 Button(
                     onClick = onSelect,
-                    colors = ButtonDefaults.buttonColors(containerColor = BrandIndigo),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (template.isPremier && !isPremierUnlocked) BrandAmber else BrandIndigo
+                    ),
                     shape = RoundedCornerShape(10.dp),
                     modifier = Modifier.testTag("select_template_btn_${template.id}")
                 ) {
-                    Text("Select & Edit", fontWeight = FontWeight.Bold)
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowForward,
-                        contentDescription = null,
-                        modifier = Modifier.size(16.dp)
-                    )
+                    if (template.isPremier && !isPremierUnlocked) {
+                        Icon(
+                            imageVector = Icons.Default.Lock,
+                            contentDescription = null,
+                            tint = Color.Black,
+                            modifier = Modifier.size(15.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Unlock (Watch Ad)", fontWeight = FontWeight.Bold, color = Color.Black)
+                    } else {
+                        Text("Select & Edit", fontWeight = FontWeight.Bold)
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
                 }
             }
         }
@@ -918,28 +1033,40 @@ fun TemplatePreviewDialog(
     onDismiss: () -> Unit,
     onSelect: () -> Unit
 ) {
-    androidx.compose.ui.window.Dialog(
-        onDismissRequest = onDismiss,
-        properties = androidx.compose.ui.window.DialogProperties(
-            usePlatformDefaultWidth = false
+    if (WebsiteTemplates.is4BitAnime(template)) {
+        var currentTmpl by remember(template.id) { mutableStateOf(template) }
+        Anime4BitQuickLookModal(
+            template = currentTmpl,
+            all4BitTemplates = WebsiteTemplates.allTemplates.filter { WebsiteTemplates.is4BitAnime(it) },
+            isPremierUnlocked = true,
+            onDismiss = onDismiss,
+            onSelectTemplate = { currentTmpl = it },
+            onApply = onSelect
         )
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .clickable(onClick = onDismiss)
-                .padding(horizontal = 14.dp, vertical = 20.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            TemplatePreview(
-                template = template,
-                onSelect = onSelect,
-                onDismiss = onDismiss,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .fillMaxHeight()
-                    .clickable(enabled = false) {}
+    } else {
+        androidx.compose.ui.window.Dialog(
+            onDismissRequest = onDismiss,
+            properties = androidx.compose.ui.window.DialogProperties(
+                usePlatformDefaultWidth = false
             )
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clickable(onClick = onDismiss)
+                    .padding(horizontal = 14.dp, vertical = 20.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                TemplatePreview(
+                    template = template,
+                    onSelect = onSelect,
+                    onDismiss = onDismiss,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .fillMaxHeight()
+                        .clickable(enabled = false) {}
+                )
+            }
         }
     }
 }

@@ -91,6 +91,9 @@ fun LiveBlockVisualPreview(
         "minimal-light" -> BrandIndigo
         "warm-editorial" -> BrandAmber
         "sunset-gradient" -> BrandRose
+        "anime-4bit" -> Color(0xFFFF2A85)
+        "retro-arcade-4bit" -> Color(0xFF39FF14)
+        "gameboy-4bit" -> Color(0xFF306230)
         else -> BrandIndigo
     }
 
@@ -729,6 +732,429 @@ fun LiveBlockVisualPreview(
                                 style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
                                 color = accentColor
                             )
+                        }
+                    }
+                }
+
+                BlockType.WHATSAPP_SHOP -> {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        // Store Header Bar
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(cardBg)
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(16.dp)
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .background(accentColor)
+                                )
+                                Text(
+                                    text = block.title.ifBlank { "Knot & Weave" },
+                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                    color = resolvedText
+                                )
+                            }
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = BrandEmerald.copy(alpha = 0.15f),
+                                border = BorderStroke(1.dp, BrandEmerald.copy(alpha = 0.4f))
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Text("🛍️ Cart (1)", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold), color = BrandEmerald)
+                                }
+                            }
+                        }
+
+                        // Promo Banner
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(Brush.horizontalGradient(listOf(Color(0xFF8B5CF6), Color(0xFFEC4899))))
+                                .padding(12.dp)
+                        ) {
+                            Column {
+                                Text(
+                                    text = block.subtitle.ifBlank { "Artisan Festival • Up to 50% off select handcrafted bags" },
+                                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                    color = Color.White
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = "Handcrafted organic merino wool • Direct WhatsApp dispatch",
+                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                                    color = Color.White.copy(alpha = 0.9f)
+                                )
+                            }
+                        }
+
+                        // Product Preview Cards
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Card(
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(10.dp),
+                                colors = CardDefaults.cardColors(containerColor = cardBg),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.25f))
+                            ) {
+                                Column(modifier = Modifier.padding(8.dp)) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(55.dp)
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .background(Color(0xFFE9D5FF)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text("👜 Tote", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF6B21A8))
+                                    }
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    Text("Lavender Breeze", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold), color = resolvedText)
+                                    Text("₹1,249", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.ExtraBold), color = BrandEmerald)
+                                }
+                            }
+
+                            Card(
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(10.dp),
+                                colors = CardDefaults.cardColors(containerColor = cardBg),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.25f))
+                            ) {
+                                Column(modifier = Modifier.padding(8.dp)) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(55.dp)
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .background(Color(0xFFFECDD3)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text("👛 Crossbody", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF9F1239))
+                                    }
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    Text("Crimson Night", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold), color = resolvedText)
+                                    Text("₹899", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.ExtraBold), color = BrandEmerald)
+                                }
+                            }
+                        }
+
+                        // Photo Upload Option & Multi-Step Wizard Indicator
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(10.dp),
+                            color = BrandAmber.copy(alpha = 0.12f),
+                            border = BorderStroke(1.dp, BrandAmber.copy(alpha = 0.35f))
+                        ) {
+                            Column(modifier = Modifier.padding(10.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text("📸 Custom Photo Upload Feature", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold), color = BrandAmber)
+                                }
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    "Customers can attach reference design photos, custom initials, and notes.",
+                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                                    color = textSecondary
+                                )
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        "1. Address ➔ 2. Payment ➔ 3. Summary",
+                                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp, fontWeight = FontWeight.Bold),
+                                        color = resolvedText
+                                    )
+                                    Surface(
+                                        shape = RoundedCornerShape(6.dp),
+                                        color = BrandEmerald
+                                    ) {
+                                        Text(
+                                            text = "📲 WhatsApp Order",
+                                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp, fontWeight = FontWeight.Bold),
+                                            color = Color.White,
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                BlockType.MULTISTEP_WIZARD -> {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        // Header
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Surface(
+                                shape = CircleShape,
+                                color = BrandIndigo.copy(alpha = 0.15f),
+                                border = BorderStroke(1.dp, BrandIndigo.copy(alpha = 0.3f))
+                            ) {
+                                Text(
+                                    text = "✦ MULTI-STEP WIZARD",
+                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 9.sp),
+                                    color = BrandIndigo,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = block.title.ifBlank { "Multi-Step Booking & Quote Wizard" },
+                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                color = resolvedText,
+                                textAlign = TextAlign.Center
+                            )
+                            Text(
+                                text = block.subtitle.ifBlank { "Customize your options, attach reference photos, and confirm via WhatsApp" },
+                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                                color = textSecondary,
+                                textAlign = TextAlign.Center
+                            )
+                        }
+
+                        // Stepper indicator
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(cardBg)
+                                .padding(vertical = 6.dp, horizontal = 10.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Box(modifier = Modifier.size(16.dp).clip(CircleShape).background(BrandIndigo), contentAlignment = Alignment.Center) {
+                                    Text("1", color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                }
+                                Text("Tier", style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp, fontWeight = FontWeight.Bold), color = BrandIndigo)
+                            }
+                            Text("➔", color = textSecondary, fontSize = 9.sp)
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Box(modifier = Modifier.size(16.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
+                                    Text("2", color = resolvedText, fontSize = 9.sp)
+                                }
+                                Text("Add-ons", style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp), color = textSecondary)
+                            }
+                            Text("➔", color = textSecondary, fontSize = 9.sp)
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Box(modifier = Modifier.size(16.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
+                                    Text("3", color = resolvedText, fontSize = 9.sp)
+                                }
+                                Text("Photo & Date", style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp), color = textSecondary)
+                            }
+                            Text("➔", color = textSecondary, fontSize = 9.sp)
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Box(modifier = Modifier.size(16.dp).clip(CircleShape).background(BrandEmerald), contentAlignment = Alignment.Center) {
+                                    Text("4", color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                }
+                                Text("WhatsApp", style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp, fontWeight = FontWeight.Bold), color = BrandEmerald)
+                            }
+                        }
+
+                        // Sample Tier Cards
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Surface(
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(8.dp),
+                                color = BrandIndigo.copy(alpha = 0.08f),
+                                border = BorderStroke(1.5.dp, BrandIndigo)
+                            ) {
+                                Column(modifier = Modifier.padding(8.dp)) {
+                                    Text("🎂 Signature Tier", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold), color = BrandIndigo)
+                                    Text("₹1,899", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.ExtraBold), color = BrandEmerald)
+                                }
+                            }
+                            Surface(
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(8.dp),
+                                color = cardBg,
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.25f))
+                            ) {
+                                Column(modifier = Modifier.padding(8.dp)) {
+                                    Text("👑 Grand Luxe", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold), color = resolvedText)
+                                    Text("₹3,499", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.ExtraBold), color = BrandEmerald)
+                                }
+                            }
+                        }
+
+                        // Photo Upload + WhatsApp CTA row
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(8.dp),
+                            color = BrandEmerald.copy(alpha = 0.1f),
+                            border = BorderStroke(1.dp, BrandEmerald.copy(alpha = 0.35f))
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text("📸 Reference Photo Upload Included", style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, fontWeight = FontWeight.Bold), color = resolvedText)
+                                Surface(shape = RoundedCornerShape(4.dp), color = BrandEmerald) {
+                                    Text("📲 WhatsApp", color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp))
+                                }
+                            }
+                        }
+                    }
+                }
+
+                BlockType.COUNTDOWN_TIMER -> {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = block.title.ifBlank { "🚀 Launching Soon" },
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                            color = resolvedText,
+                            textAlign = TextAlign.Center
+                        )
+                        if (block.subtitle.isNotBlank()) {
+                            Text(
+                                text = block.subtitle,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = textSecondary,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.padding(top = 4.dp)
+                            )
+                        }
+
+                        // Countdown boxes preview
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            listOf("14" to "DAYS", "08" to "HOURS", "45" to "MINS", "30" to "SECS").forEach { (num, lbl) ->
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = cardBg,
+                                    border = BorderStroke(1.dp, accentColor.copy(alpha = 0.5f))
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally
+                                    ) {
+                                        Text(
+                                            text = num,
+                                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold),
+                                            color = accentColor
+                                        )
+                                        Text(
+                                            text = lbl,
+                                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.sp, fontWeight = FontWeight.SemiBold),
+                                            color = textSecondary
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        if (block.buttonText.isNotBlank()) {
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = accentColor
+                            ) {
+                                Text(
+                                    text = block.buttonText,
+                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                    color = Color.White,
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+
+                BlockType.IMAGE_CAROUSEL -> {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = block.title.ifBlank { "Featured Highlights" },
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                            color = resolvedText,
+                            textAlign = TextAlign.Center
+                        )
+                        if (block.subtitle.isNotBlank()) {
+                            Text(
+                                text = block.subtitle,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = textSecondary,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.padding(top = 4.dp)
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(120.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(accentColor.copy(alpha = 0.12f))
+                                .border(1.dp, borderColor, RoundedCornerShape(10.dp)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 12.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Surface(shape = CircleShape, color = Color.Black.copy(alpha = 0.4f), modifier = Modifier.size(24.dp)) {
+                                    Box(contentAlignment = Alignment.Center) { Text("‹", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold) }
+                                }
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Text("🖼️ Interactive Carousel Gallery", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold), color = resolvedText)
+                                    Text("Swipe & Autoplay Ready", style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp), color = textSecondary)
+                                }
+                                Surface(shape = CircleShape, color = Color.Black.copy(alpha = 0.4f), modifier = Modifier.size(24.dp)) {
+                                    Box(contentAlignment = Alignment.Center) { Text("›", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold) }
+                                }
+                            }
+
+                            // Carousel dots
+                            Row(
+                                modifier = Modifier
+                                    .align(Alignment.BottomCenter)
+                                    .padding(bottom = 6.dp),
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Box(modifier = Modifier.size(16.dp, 4.dp).clip(RoundedCornerShape(2.dp)).background(accentColor))
+                                Box(modifier = Modifier.size(4.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.5f)))
+                                Box(modifier = Modifier.size(4.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.5f)))
+                            }
                         }
                     }
                 }

@@ -33,8 +33,11 @@ import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.RateReview
+import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material.icons.filled.Timeline
 import androidx.compose.material.icons.filled.TrendingUp
+import androidx.compose.material.icons.filled.ViewCarousel
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -207,6 +210,10 @@ fun getIconForBlockType(type: BlockType): ImageVector {
         BlockType.LOGOS -> Icons.Default.Apartment
         BlockType.NEWSLETTER -> Icons.Default.Email
         BlockType.CUSTOM_HTML -> Icons.Default.Code
+        BlockType.WHATSAPP_SHOP -> Icons.Default.ShoppingCart
+        BlockType.MULTISTEP_WIZARD -> Icons.Default.Timeline
+        BlockType.COUNTDOWN_TIMER -> Icons.Default.Schedule
+        BlockType.IMAGE_CAROUSEL -> Icons.Default.ViewCarousel
         BlockType.FOOTER -> Icons.Default.FormatAlignLeft
     }
 }

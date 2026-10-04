@@ -151,9 +151,19 @@ class WebsiteLocalServer {
                     addLog(method, path, 200, clientIp, bytes.size)
                 }
                 else -> {
-                    val notFound = "<h1>404 Not Found</h1><p>Resource $path was not found on this mobile local server.</p>".toByteArray()
-                    sendResponse(out, 404, "text/html", notFound)
-                    addLog(method, path, 404, clientIp, notFound.size)
+                    val cleanPath = path.removePrefix("/")
+                    val matchedPage = site.additionalPages[cleanPath]
+                        ?: site.additionalPages["$cleanPath.html"]
+                        ?: site.additionalPages[if (cleanPath.endsWith(".html")) cleanPath else "$cleanPath.html"]
+                    if (matchedPage != null) {
+                        val bytes = matchedPage.toByteArray(Charsets.UTF_8)
+                        sendResponse(out, 200, "text/html; charset=utf-8", bytes)
+                        addLog(method, path, 200, clientIp, bytes.size)
+                    } else {
+                        val notFound = "<h1>404 Not Found</h1><p>Resource $path was not found on this mobile local server.</p>".toByteArray()
+                        sendResponse(out, 404, "text/html", notFound)
+                        addLog(method, path, 404, clientIp, notFound.size)
+                    }
                 }
             }
         } catch (e: Exception) {

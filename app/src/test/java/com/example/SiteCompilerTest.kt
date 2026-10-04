@@ -193,4 +193,73 @@ class SiteCompilerTest {
         assertTrue("CSS should have linear-gradient accent on buttons", compiled.css.contains("linear-gradient(135deg, var(--accent)"))
         assertTrue("CSS should have mesh/radial glow background", compiled.css.contains("radial-gradient"))
     }
+
+    @Test
+    fun testGlobalThemeCustomizationCustomColorsAndButtonStyles() {
+        val site = WebsiteEntity(
+            id = 1,
+            title = "Custom Palette Site",
+            slug = "custom-palette-site",
+            description = "Custom colors and styles test",
+            themePreset = "modern-dark",
+            fontFamily = "Outfit, sans-serif",
+            buttonStyle = "brutalist",
+            buttonRadius = "sharp",
+            customPrimaryColor = "#06B6D4",
+            customBackgroundColor = "#030A14"
+        )
+        val blocks = listOf(
+            WebBlockEntity(
+                websiteId = 1,
+                orderIndex = 0,
+                type = BlockType.HERO,
+                title = "Brutalist Cyan",
+                buttonText = "Explore Now",
+                buttonUrl = "#"
+            )
+        )
+        val compiled = SiteCompiler.compile(site, blocks)
+
+        // Verifies custom colors resolved into CSS
+        assertTrue("CSS should resolve custom accent color", compiled.css.contains("--accent: #06B6D4;"))
+        assertTrue("CSS should resolve custom background tone", compiled.css.contains("--bg-primary: #030A14;"))
+
+        // Verifies button radius variable
+        assertTrue("CSS should resolve sharp button radius (0px)", compiled.css.contains("--btn-radius: 0px;"))
+
+        // Verifies brutalist button styling rule
+        assertTrue("CSS should apply neo-brutalist border styling", compiled.css.contains("border: 2.5px solid var(--text-primary)"))
+
+        // Verifies font import for Outfit
+        assertTrue("HTML should import Google Font for Outfit", compiled.html.contains("family=Outfit"))
+    }
+
+    @Test
+    fun testButtonRadiusAndGlassEffect() {
+        val site = WebsiteEntity(
+            id = 1,
+            title = "Glassmorphism Studio",
+            slug = "glassmorphism-studio",
+            description = "Glass button test",
+            themePreset = "modern-dark",
+            fontFamily = "Space Grotesk, sans-serif",
+            buttonStyle = "glass",
+            buttonRadius = "rounded"
+        )
+        val blocks = listOf(
+            WebBlockEntity(
+                websiteId = 1,
+                orderIndex = 0,
+                type = BlockType.HERO,
+                title = "Glass UI",
+                buttonText = "Launch",
+                buttonUrl = "#"
+            )
+        )
+        val compiled = SiteCompiler.compile(site, blocks)
+
+        assertTrue("CSS should resolve rounded button radius (12px)", compiled.css.contains("--btn-radius: 12px;"))
+        assertTrue("CSS should contain glass button backdrop-filter", compiled.css.contains("backdrop-filter: blur(12px)"))
+        assertTrue("HTML should import Google Font for Space Grotesk", compiled.html.contains("family=Space+Grotesk"))
+    }
 }

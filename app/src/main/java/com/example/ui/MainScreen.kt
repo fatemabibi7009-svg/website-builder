@@ -22,8 +22,11 @@ import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.Devices
 import androidx.compose.material.icons.filled.Dns
+import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.Redo
 import androidx.compose.material.icons.filled.RocketLaunch
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Undo
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Card
@@ -60,6 +63,7 @@ import com.example.ui.editor.AddBlockBottomSheet
 import com.example.ui.editor.BlockEditorBottomSheet
 import com.example.ui.editor.EditorScreen
 import com.example.ui.editor.SiteSettingsDialog
+import com.example.ui.editor.ThemeCustomizerDialog
 import com.example.ui.localhost.LocalhostScreen
 import com.example.ui.preview.PreviewScreen
 import com.example.ui.templates.TemplateSelectionScreen
@@ -79,7 +83,9 @@ fun MainScreen(viewModel: MainViewModel) {
     val editingBlock by viewModel.editingBlock.collectAsState()
     val isAddBlockSheetOpen by viewModel.isAddBlockSheetOpen.collectAsState()
     val isSiteSettingsOpen by viewModel.isSiteSettingsOpen.collectAsState()
+    val isThemeCustomizerOpen by viewModel.isThemeCustomizerOpen.collectAsState()
     val isTemplateSelectionActive by viewModel.isTemplateSelectionActive.collectAsState()
+    val isPremierUnlocked by viewModel.isPremierUnlocked.collectAsState()
     val serverRunning by viewModel.serverRunning.collectAsState()
     val serverPort by viewModel.serverPort.collectAsState()
     val serverLocalIp by viewModel.serverLocalIp.collectAsState()
@@ -91,6 +97,11 @@ fun MainScreen(viewModel: MainViewModel) {
     val deployments by viewModel.deployments.collectAsState()
     val distZip by viewModel.distZip.collectAsState()
     val userMessage by viewModel.userMessage.collectAsState()
+    val selectedPageSlug by viewModel.selectedPageSlug.collectAsState()
+    val canUndo by viewModel.canUndo.collectAsState()
+    val canRedo by viewModel.canRedo.collectAsState()
+    val undoActionTitle by viewModel.undoActionTitle.collectAsState()
+    val redoActionTitle by viewModel.redoActionTitle.collectAsState()
 
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -109,6 +120,10 @@ fun MainScreen(viewModel: MainViewModel) {
             },
             onContinueExisting = {
                 viewModel.dismissTemplateSelection()
+            },
+            isPremierUnlocked = isPremierUnlocked,
+            onWatchAdToUnlock = {
+                viewModel.unlockPremier()
             }
         )
     } else {
@@ -166,6 +181,30 @@ fun MainScreen(viewModel: MainViewModel) {
                     },
                     actions = {
                         IconButton(
+                            onClick = { viewModel.undo() },
+                            enabled = canUndo,
+                            modifier = Modifier.testTag("topbar_undo_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Undo,
+                                contentDescription = if (!undoActionTitle.isNullOrBlank()) "Undo: $undoActionTitle" else "Undo",
+                                tint = if (canUndo) BrandIndigo else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.35f)
+                            )
+                        }
+
+                        IconButton(
+                            onClick = { viewModel.redo() },
+                            enabled = canRedo,
+                            modifier = Modifier.testTag("topbar_redo_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Redo,
+                                contentDescription = if (!redoActionTitle.isNullOrBlank()) "Redo: $redoActionTitle" else "Redo",
+                                tint = if (canRedo) BrandIndigo else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.35f)
+                            )
+                        }
+
+                        IconButton(
                             onClick = { viewModel.showTemplateSelection() },
                             modifier = Modifier.testTag("topbar_templates_button")
                         ) {
@@ -173,6 +212,17 @@ fun MainScreen(viewModel: MainViewModel) {
                                 imageVector = Icons.Default.AutoAwesome,
                                 contentDescription = "Choose Template",
                                 tint = BrandCyan
+                            )
+                        }
+
+                        IconButton(
+                            onClick = { viewModel.openThemeCustomizer() },
+                            modifier = Modifier.testTag("topbar_theme_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Palette,
+                                contentDescription = "Theme Studio",
+                                tint = BrandIndigo
                             )
                         }
 
@@ -263,18 +313,33 @@ fun MainScreen(viewModel: MainViewModel) {
                             onToggleVisibility = { viewModel.toggleBlockVisibility(it) },
                             onOpenSettings = { viewModel.openSiteSettings() },
                             onOpenTemplateSelection = { viewModel.showTemplateSelection() },
-                            onReorderBlocks = { viewModel.reorderBlocks(it) }
+                            onOpenThemeCustomizer = { viewModel.openThemeCustomizer() },
+                            onReorderBlocks = { viewModel.reorderBlocks(it) },
+                            onUpdateBlock = { viewModel.saveEditedBlock(it) },
+                            selectedPageSlug = selectedPageSlug,
+                            onSelectPage = { viewModel.selectPage(it) },
+                            onAddPage = { title, slug -> viewModel.addPage(title, slug) },
+                            onRemovePage = { viewModel.removePage(it) },
+                            onUndo = { viewModel.undo() },
+                            onRedo = { viewModel.redo() },
+                            canUndo = canUndo,
+                            canRedo = canRedo,
+                            undoActionTitle = undoActionTitle,
+                            redoActionTitle = redoActionTitle
                         )
                     }
                     NavigationTab.TEMPLATES -> {
                         TemplatesScreen(
                             onSelectTemplate = { viewModel.applyTemplate(it) },
                             onExportJson = { viewModel.exportSiteAsJson() },
-                            onImportJson = { viewModel.importSiteFromJson(it) }
+                            onImportJson = { viewModel.importSiteFromJson(it) },
+                            isPremierUnlocked = isPremierUnlocked,
+                            onWatchAdToUnlock = { viewModel.unlockPremier() }
                         )
                     }
                     NavigationTab.PREVIEW -> {
                         PreviewScreen(
+                            website = currentWebsite,
                             compiledSite = compiledSite,
                             viewportMode = viewportMode,
                             onSelectViewport = { viewModel.setViewport(it) },
@@ -328,6 +393,7 @@ fun MainScreen(viewModel: MainViewModel) {
     editingBlock?.let { block ->
         BlockEditorBottomSheet(
             block = block,
+            website = currentWebsite,
             onDismiss = { viewModel.closeBlockEditor() },
             onSave = { viewModel.saveEditedBlock(it) }
         )
@@ -338,8 +404,20 @@ fun MainScreen(viewModel: MainViewModel) {
         SiteSettingsDialog(
             website = currentWebsite!!,
             onDismiss = { viewModel.closeSiteSettings() },
-            onSave = { title, slug, desc, theme, font, css ->
-                viewModel.updateSiteSettings(title, slug, desc, theme, font, css)
+            onSave = { title, slug, desc, theme, font, css, anim, visitor, form, og ->
+                viewModel.updateSiteSettings(title, slug, desc, theme, font, css, anim, visitor, form, og)
+            },
+            onOpenThemeCustomizer = { viewModel.openThemeCustomizer() }
+        )
+    }
+
+    // Modal Global Theme & Style Customizer Dialog
+    if (isThemeCustomizerOpen && currentWebsite != null) {
+        ThemeCustomizerDialog(
+            website = currentWebsite!!,
+            onDismiss = { viewModel.closeThemeCustomizer() },
+            onApply = { preset, font, btnStyle, btnRadius, customPrimary, customBg ->
+                viewModel.updateThemeCustomization(preset, font, btnStyle, btnRadius, customPrimary, customBg)
             }
         )
     }

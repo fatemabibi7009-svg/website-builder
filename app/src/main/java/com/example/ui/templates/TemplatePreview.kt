@@ -882,6 +882,20 @@ private fun LargeTemplateVisualCanvas(
  */
 fun getTemplateKeyFeatures(template: TemplateDefinition): List<String> {
     return when {
+        template.id.contains("4bit") || template.category.contains("4-Bit") || template.category.contains("Anime") -> listOf(
+            "Authentic 4-bit / 8-bit retro arcade aesthetic with pixel typography ('Press Start 2P', 'DotGothic16')",
+            "Synthesized 8-bit Web Audio chiptune engine & retro square-wave sound effects",
+            "CRT scanline effect simulation with authentic phosphor glow and jitter toggles",
+            "High-contrast retro color palette (Game Boy DMG, Akiba Cyber Neon, or Phosphor Green)",
+            "Integrated multi-step wizard, interactive cartridge catalog, or direct WhatsApp dispatch"
+        )
+        template.id.contains("whatsapp") -> listOf(
+            "Interactive product catalog with category filters and live instant search",
+            "Cart drawer with live subtotal calculation and quantity adjustment",
+            "Multi-step checkout wizard (Delivery Address, Payment Method, Order Summary)",
+            "Direct WhatsApp order dispatch with auto-formatted customer receipt",
+            "Photo upload tool for custom artisan piece orders and reference designs"
+        )
         template.id.contains("saas") -> listOf(
             "Full-bleed hero banner with high-converting dual Call-to-Action buttons",
             "Interactive feature grid highlighting product modules and benefits",

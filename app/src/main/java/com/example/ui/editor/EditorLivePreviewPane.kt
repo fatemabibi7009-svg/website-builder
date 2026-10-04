@@ -1,6 +1,8 @@
 package com.example.ui.editor
 
 import android.annotation.SuppressLint
+import android.view.View
+import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -15,6 +17,8 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -89,12 +93,19 @@ fun EditorLivePreviewPane(
     isDragging: Boolean = false,
     draggingItemIndex: Int? = null,
     isExpanded: Boolean = false,
+    activePageSlug: String = "index",
+    onSelectPage: ((String) -> Unit)? = null,
     onToggleExpand: (() -> Unit)? = null,
     onClose: (() -> Unit)? = null
 ) {
     var viewportMode by remember { mutableStateOf(ViewportMode.MOBILE) }
     var reloadTrigger by remember { mutableStateOf(0) }
+    var internalActivePageSlug by remember(activePageSlug) { mutableStateOf(activePageSlug) }
     var webViewRef by remember { mutableStateOf<WebView?>(null) }
+
+    val pages = remember(website?.pagesJson) {
+        SiteCompiler.parsePages(website?.pagesJson ?: "")
+    }
 
     // Pulsing animation for real-time live indicator
     val infiniteTransition = rememberInfiniteTransition(label = "pulse_transition")
@@ -115,12 +126,16 @@ fun EditorLivePreviewPane(
         } else null
     }
 
-    // Assemble complete standalone HTML with inlined CSS & JS matching final export
-    val fullHtml = remember(compiledSite, reloadTrigger) {
+    // Assemble complete standalone HTML for the active page with inlined CSS & JS matching final export
+    val fullHtml = remember(compiledSite, internalActivePageSlug, reloadTrigger) {
         if (compiledSite == null) {
             "<!DOCTYPE html><html><body style='display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;background:#0d1117;color:#8b949e;text-align:center;'><div><h3>Preparing In-Editor Live Preview...</h3><p>Add sections or choose a template to begin</p></div></body></html>"
         } else {
-            val html = compiledSite.html
+            val html: String = if (internalActivePageSlug.isEmpty() || internalActivePageSlug == "index") {
+                compiledSite.html
+            } else {
+                compiledSite.additionalPages[internalActivePageSlug] ?: compiledSite.html
+            }
             val css = "<style>\n${compiledSite.css}\n</style>"
             val js = "<script>\n${compiledSite.js}\n</script>"
             html.replace("<link rel=\"stylesheet\" href=\"styles.css\">", css)
@@ -339,53 +354,93 @@ fun EditorLivePreviewPane(
                 }
             }
 
-            // Browser Address Chrome
+            // Browser Address Chrome & Page Tabs
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
                 border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
             ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 10.dp, vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Box(
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Row(
                         modifier = Modifier
-                            .weight(1f)
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(MaterialTheme.colorScheme.surface)
-                            .padding(horizontal = 8.dp, vertical = 3.dp)
+                            .fillMaxWidth()
+                            .padding(horizontal = 10.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Default.Lock,
-                                contentDescription = null,
-                                tint = BrandEmerald,
-                                modifier = Modifier.size(11.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = "https://${website?.slug ?: "mysite"}.webcraft.app",
-                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(MaterialTheme.colorScheme.surface)
+                                .padding(horizontal = 8.dp, vertical = 3.dp)
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Default.Lock,
+                                    contentDescription = null,
+                                    tint = BrandEmerald,
+                                    modifier = Modifier.size(11.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                val currentSlugPart = if (internalActivePageSlug == "index" || internalActivePageSlug.isEmpty()) "" else "/$internalActivePageSlug.html"
+                                Text(
+                                    text = "https://${website?.slug ?: "mysite"}.webcraft.app$currentSlugPart",
+                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
                         }
+
+                        Spacer(modifier = Modifier.width(8.dp))
+
+                        Text(
+                            text = viewportMode.name.lowercase().replaceFirstChar { it.uppercase() },
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold
+                            ),
+                            color = BrandCyan
+                        )
                     }
 
-                    Spacer(modifier = Modifier.width(8.dp))
-
-                    Text(
-                        text = viewportMode.name.lowercase().replaceFirstChar { it.uppercase() },
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold
-                        ),
-                        color = BrandCyan
-                    )
+                    if (pages.size > 1) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 10.dp, vertical = 2.dp)
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            pages.forEach { page ->
+                                val isSelected = page.slug == internalActivePageSlug
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = if (isSelected) BrandIndigo else MaterialTheme.colorScheme.surface,
+                                    border = BorderStroke(
+                                        1.dp,
+                                        if (isSelected) BrandIndigo else MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
+                                    ),
+                                    modifier = Modifier.clickable {
+                                        internalActivePageSlug = page.slug
+                                        onSelectPage?.invoke(page.slug)
+                                    }
+                                ) {
+                                    Text(
+                                        text = page.title.ifEmpty { page.slug },
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            fontSize = 10.sp,
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                        ),
+                                        color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurface,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
             }
 
@@ -421,6 +476,8 @@ fun EditorLivePreviewPane(
                         modifier = Modifier.fillMaxSize(),
                         factory = { ctx ->
                             WebView(ctx).apply {
+                                // Disable hardware acceleration on emulator to prevent Mesa rendernode crashes
+                                setLayerType(View.LAYER_TYPE_SOFTWARE, null)
                                 settings.javaScriptEnabled = true
                                 settings.domStorageEnabled = true
                                 settings.useWideViewPort = true
@@ -429,10 +486,44 @@ fun EditorLivePreviewPane(
 
                                 webViewClient = object : WebViewClient() {
                                     override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
+                                        val url = request?.url?.toString() ?: ""
+                                        if (url.startsWith("http://localhost") || url.startsWith("http://127.0.0.1")) {
+                                            val path = request?.url?.path ?: ""
+                                            val cleanSlug = path.removePrefix("/").removeSuffix(".html").substringBefore("?")
+                                            val resolvedSlug = if (cleanSlug.isEmpty()) "index" else cleanSlug
+                                            if (pages.any { it.slug == resolvedSlug }) {
+                                                internalActivePageSlug = resolvedSlug
+                                                onSelectPage?.invoke(resolvedSlug)
+                                                return true
+                                            }
+                                        }
                                         return true // Confine navigation within preview
+                                    }
+
+                                    override fun onRenderProcessGone(view: WebView?, detail: RenderProcessGoneDetail?): Boolean {
+                                        // Prevents host application crash if renderer process terminates
+                                        return true
                                     }
                                 }
 
+                                addJavascriptInterface(object {
+                                    @android.webkit.JavascriptInterface
+                                    fun onLinkTapped(href: String, text: String) {
+                                        val cleanHref = href.trim()
+                                        if (cleanHref.endsWith(".html") || !cleanHref.startsWith("#")) {
+                                            val targetSlug = cleanHref.removeSuffix(".html").removePrefix("/").substringBefore("?")
+                                            if (pages.any { it.slug == targetSlug || (targetSlug == "index" && it.slug == "index") }) {
+                                                this@apply.post {
+                                                    val resolved = if (targetSlug.isEmpty()) "index" else targetSlug
+                                                    internalActivePageSlug = resolved
+                                                    onSelectPage?.invoke(resolved)
+                                                }
+                                            }
+                                        }
+                                    }
+                                }, "AndroidBridge")
+
+                                tag = fullHtml
                                 loadDataWithBaseURL(
                                     "http://localhost/",
                                     fullHtml,
@@ -445,13 +536,16 @@ fun EditorLivePreviewPane(
                         },
                         update = { webView ->
                             webViewRef = webView
-                            webView.loadDataWithBaseURL(
-                                "http://localhost/",
-                                fullHtml,
-                                "text/html",
-                                "UTF-8",
-                                null
-                            )
+                            if (webView.tag != fullHtml) {
+                                webView.tag = fullHtml
+                                webView.loadDataWithBaseURL(
+                                    "http://localhost/",
+                                    fullHtml,
+                                    "text/html",
+                                    "UTF-8",
+                                    null
+                                )
+                            }
                         }
                     )
                 }

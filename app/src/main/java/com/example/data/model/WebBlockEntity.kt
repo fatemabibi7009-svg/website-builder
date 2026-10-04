@@ -36,5 +36,7 @@ data class WebBlockEntity(
     val textColorHex: String = "", // empty means follow theme
     val alignment: String = "center", // left, center, right
     val extraDataJson: String = "", // serialized items (features, faqs, links, etc.)
-    val isVisible: Boolean = true
+    val isVisible: Boolean = true,
+    val pageSlug: String = "index",
+    val animationEffect: String = "default"
 )

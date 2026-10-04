@@ -3,11 +3,17 @@ package com.example.ui.preview
 import android.annotation.SuppressLint
 import android.content.Intent
 import android.net.Uri
+import android.view.View
+import android.webkit.RenderProcessGoneDetail
+import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,13 +28,15 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import android.webkit.WebResourceRequest
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DesktopWindows
 import androidx.compose.material.icons.filled.OpenInBrowser
 import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Tablet
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -38,6 +46,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -52,6 +61,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.example.data.model.CompiledSite
+import com.example.data.model.WebsiteEntity
+import com.example.generator.SiteCompiler
+import com.example.generator.SiteCompiler.PageDef
 import com.example.ui.ViewportMode
 import com.example.ui.theme.BrandCyan
 import com.example.ui.theme.BrandIndigo
@@ -59,6 +71,7 @@ import com.example.ui.theme.BrandIndigo
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
 fun PreviewScreen(
+    website: WebsiteEntity? = null,
     compiledSite: CompiledSite?,
     viewportMode: ViewportMode,
     onSelectViewport: (ViewportMode) -> Unit,
@@ -67,18 +80,30 @@ fun PreviewScreen(
 ) {
     val context = LocalContext.current
     var webViewInstance by remember { mutableStateOf<WebView?>(null) }
+    var webViewKey by remember { mutableStateOf(0) }
+    var webViewError by remember { mutableStateOf<String?>(null) }
+    var showSeoModal by remember { mutableStateOf(false) }
+
+    val pages = remember(website?.pagesJson) {
+        SiteCompiler.parsePages(website?.pagesJson ?: "")
+    }
+    var activePreviewPageSlug by remember { mutableStateOf("index") }
 
     // Assemble complete standalone HTML with inlined CSS & JS for 100% reliable local preview
-    val fullHtml = remember(compiledSite) {
+    val fullHtml = remember(compiledSite, activePreviewPageSlug) {
         if (compiledSite == null) {
             "<html><body style='display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;'><h2>Generating preview...</h2></body></html>"
         } else {
-            val html = compiledSite.html
+            val rawHtml = if (activePreviewPageSlug == "index") {
+                compiledSite.html
+            } else {
+                compiledSite.additionalPages["${activePreviewPageSlug}.html"] ?: compiledSite.html
+            }
             val css = "<style>\n${compiledSite.css}\n</style>"
             val js = "<script>\n${compiledSite.js}\n</script>"
 
             // Inject styles and script directly into HTML if links exist
-            html.replace("<link rel=\"stylesheet\" href=\"styles.css\">", css)
+            rawHtml.replace("<link rel=\"stylesheet\" href=\"styles.css\">", css)
                 .replace("<script src=\"main.js\"></script>", js)
         }
     }
@@ -88,11 +113,43 @@ fun PreviewScreen(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
     ) {
+        // Multi-page switcher bar (if more than 1 page exists)
+        if (pages.size > 1) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 6.dp)
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                for (pg in pages) {
+                    val isCurrent = pg.slug == activePreviewPageSlug
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = if (isCurrent) BrandIndigo else MaterialTheme.colorScheme.surfaceVariant,
+                        border = if (isCurrent) null else BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)),
+                        modifier = Modifier
+                            .clickable { activePreviewPageSlug = pg.slug }
+                            .testTag("preview_page_${pg.slug}")
+                    ) {
+                        Text(
+                            text = if (pg.slug == "index") "🏠 ${pg.title}" else "📄 ${pg.title}",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Medium
+                            ),
+                            color = if (isCurrent) Color.White else MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                        )
+                    }
+                }
+            }
+        }
+
         // Viewport Switcher Toolbar
         Card(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(12.dp),
+                .padding(horizontal = 12.dp, vertical = if (pages.size > 1) 4.dp else 12.dp),
             shape = RoundedCornerShape(12.dp),
             colors = CardDefaults.cardColors(
                 containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
@@ -133,14 +190,32 @@ fun PreviewScreen(
                 // Quick Action buttons
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     IconButton(
+                        onClick = { showSeoModal = true },
+                        modifier = Modifier
+                            .size(36.dp)
+                            .testTag("button_seo_preview")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Share,
+                            contentDescription = "SEO & Social Share Preview",
+                            tint = BrandIndigo,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+
+                    IconButton(
                         onClick = {
-                            webViewInstance?.loadDataWithBaseURL(
-                                "http://localhost:$serverPort/",
-                                fullHtml,
-                                "text/html",
-                                "UTF-8",
-                                null
-                            )
+                            try {
+                                webViewInstance?.loadDataWithBaseURL(
+                                    "http://localhost:$serverPort/",
+                                    fullHtml,
+                                    "text/html",
+                                    "UTF-8",
+                                    null
+                                )
+                            } catch (_: Exception) {
+                                webViewKey++
+                            }
                         },
                         modifier = Modifier.size(36.dp)
                     ) {
@@ -205,71 +280,178 @@ fun PreviewScreen(
                 modifier = frameModifier,
                 color = Color.White
             ) {
-                AndroidView(
-                    modifier = Modifier.fillMaxSize(),
-                    factory = { ctx ->
-                        WebView(ctx).apply {
-                            settings.javaScriptEnabled = true
-                            settings.domStorageEnabled = true
-                            settings.useWideViewPort = true
-                            settings.loadWithOverviewMode = true
-
-                            addJavascriptInterface(object {
-                                @android.webkit.JavascriptInterface
-                                fun onLinkTapped(href: String, text: String) {
-                                    // Silent bridge handler
-                                }
-                            }, "AndroidBridge")
-
-                            webViewClient = object : WebViewClient() {
-                                override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
-                                    val url = request?.url?.toString() ?: return false
-                                    if (url.startsWith("mailto:")) {
-                                        try {
-                                            val intent = Intent(Intent.ACTION_SENDTO, Uri.parse(url))
-                                            context.startActivity(intent)
-                                        } catch (_: Exception) {}
-                                        return true
-                                    } else if (url.startsWith("tel:")) {
-                                        try {
-                                            val intent = Intent(Intent.ACTION_DIAL, Uri.parse(url))
-                                            context.startActivity(intent)
-                                        } catch (_: Exception) {}
-                                        return true
-                                    } else if (url.startsWith("http://") || url.startsWith("https://")) {
-                                        if (!url.contains("localhost")) {
-                                            try {
-                                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
-                                                context.startActivity(intent)
-                                            } catch (_: Exception) {}
-                                            return true
+                if (webViewError != null) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(24.dp),
+                        verticalArrangement = Arrangement.Center,
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = "Preview Renderer Reinitializing",
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "The web renderer is restarting in software fallback mode.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Button(
+                            onClick = {
+                                webViewError = null
+                                webViewKey++
+                            },
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text("Retry Preview")
+                        }
+                    }
+                } else {
+                    key(webViewKey) {
+                        AndroidView(
+                            modifier = Modifier.fillMaxSize(),
+                            factory = { ctx ->
+                                try {
+                                    WebView(ctx).apply {
+                                        // Software layer prevents Mesa rendernode missing crashes in virtualized emulator environments
+                                        setLayerType(View.LAYER_TYPE_SOFTWARE, null)
+                                        setBackgroundColor(android.graphics.Color.WHITE)
+                                        settings.apply {
+                                            javaScriptEnabled = true
+                                            domStorageEnabled = true
+                                            databaseEnabled = true
+                                            useWideViewPort = true
+                                            loadWithOverviewMode = true
+                                            allowFileAccess = true
+                                            allowContentAccess = true
+                                            mediaPlaybackRequiresUserGesture = false
                                         }
+
+                                        addJavascriptInterface(object {
+                                            @android.webkit.JavascriptInterface
+                                            fun onLinkTapped(href: String, text: String) {
+                                                val cleanHref = href.trim()
+                                                if (cleanHref.endsWith(".html") || !cleanHref.startsWith("#")) {
+                                                    val targetSlug = cleanHref.removeSuffix(".html").removePrefix("/").substringBefore("?")
+                                                    if (pages.any { it.slug == targetSlug || (targetSlug == "index" && it.slug == "index") }) {
+                                                        this@apply.post {
+                                                            activePreviewPageSlug = if (targetSlug.isEmpty()) "index" else targetSlug
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }, "AndroidBridge")
+
+                                        webViewClient = object : WebViewClient() {
+                                            override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
+                                                val url = request?.url?.toString() ?: return false
+                                                if (url.startsWith("mailto:")) {
+                                                    try {
+                                                        val intent = Intent(Intent.ACTION_SENDTO, Uri.parse(url))
+                                                        context.startActivity(intent)
+                                                    } catch (_: Exception) {}
+                                                    return true
+                                                } else if (url.startsWith("tel:")) {
+                                                    try {
+                                                        val intent = Intent(Intent.ACTION_DIAL, Uri.parse(url))
+                                                        context.startActivity(intent)
+                                                    } catch (_: Exception) {}
+                                                    return true
+                                                } else if (url.startsWith("https://wa.me") || url.startsWith("whatsapp://") || url.contains("api.whatsapp.com")) {
+                                                    try {
+                                                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                                                        context.startActivity(intent)
+                                                    } catch (_: Exception) {}
+                                                    return true
+                                                } else if (url.startsWith("#")) {
+                                                    return false
+                                                } else if (url.startsWith("http://localhost") || url.startsWith("http://127.0.0.1")) {
+                                                    val path = request?.url?.path ?: ""
+                                                    val cleanSlug = path.removePrefix("/").removeSuffix(".html").substringBefore("?")
+                                                    val resolvedSlug = if (cleanSlug.isEmpty()) "index" else cleanSlug
+                                                    if (pages.any { it.slug == resolvedSlug }) {
+                                                        activePreviewPageSlug = resolvedSlug
+                                                        return true
+                                                    }
+                                                    return false
+                                                } else if (url.startsWith("http://") || url.startsWith("https://")) {
+                                                    try {
+                                                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                                                        context.startActivity(intent)
+                                                    } catch (_: Exception) {}
+                                                    return true
+                                                }
+                                                return false
+                                            }
+
+                                            override fun onRenderProcessGone(view: WebView?, detail: RenderProcessGoneDetail?): Boolean {
+                                                // Prevents host app termination if WebView renderer exits in emulator/software environment
+                                                try {
+                                                    (view?.parent as? android.view.ViewGroup)?.removeView(view)
+                                                    view?.destroy()
+                                                } catch (_: Throwable) {}
+                                                webViewInstance = null
+                                                // Trigger clean recreation
+                                                webViewKey++
+                                                return true
+                                            }
+                                        }
+                                        tag = fullHtml
+                                        loadDataWithBaseURL(
+                                            "http://localhost:$serverPort/",
+                                            fullHtml,
+                                            "text/html",
+                                            "UTF-8",
+                                            null
+                                        )
+                                        webViewInstance = this
                                     }
-                                    return false
+                                } catch (e: Throwable) {
+                                    webViewError = e.message ?: "Failed to initialize web view"
+                                    View(ctx)
+                                }
+                            },
+                            update = { view ->
+                                if (view is WebView) {
+                                    webViewInstance = view
+                                    try {
+                                        if (view.tag != fullHtml) {
+                                            view.tag = fullHtml
+                                            view.loadDataWithBaseURL(
+                                                "http://localhost:$serverPort/",
+                                                fullHtml,
+                                                "text/html",
+                                                "UTF-8",
+                                                null
+                                            )
+                                        }
+                                    } catch (_: Throwable) {}
+                                }
+                            },
+                            onRelease = { view ->
+                                if (view is WebView) {
+                                    try {
+                                        view.stopLoading()
+                                        view.destroy()
+                                    } catch (_: Throwable) {}
                                 }
                             }
-                            loadDataWithBaseURL(
-                                "http://localhost:$serverPort/",
-                                fullHtml,
-                                "text/html",
-                                "UTF-8",
-                                null
-                            )
-                            webViewInstance = this
-                        }
-                    },
-                    update = { view ->
-                        webViewInstance = view
-                        view.loadDataWithBaseURL(
-                            "http://localhost:$serverPort/",
-                            fullHtml,
-                            "text/html",
-                            "UTF-8",
-                            null
                         )
                     }
-                )
+                }
             }
+        }
+
+        if (showSeoModal) {
+            SeoAuditBottomSheet(
+                website = website,
+                compiledSite = compiledSite,
+                onDismiss = { showSeoModal = false }
+            )
         }
     }
 }

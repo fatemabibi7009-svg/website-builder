@@ -13,5 +13,14 @@ data class WebsiteEntity(
     val themePreset: String = "modern-dark",
     val fontFamily: String = "Inter, sans-serif",
     val customCss: String = "",
+    val buttonStyle: String = "gradient",
+    val buttonRadius: String = "pill",
+    val customPrimaryColor: String = "",
+    val customBackgroundColor: String = "",
+    val animationStyle: String = "fade-up",
+    val enableVisitorThemeToggle: Boolean = true,
+    val formEndpoint: String = "",
+    val ogImageUrl: String = "",
+    val pagesJson: String = "",
     val updatedAt: Long = System.currentTimeMillis()
 )

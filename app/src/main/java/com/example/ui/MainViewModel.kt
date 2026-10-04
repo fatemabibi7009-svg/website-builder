@@ -19,6 +19,8 @@ import com.example.generator.TemplateDefinition
 import com.example.generator.WebsiteTemplates
 import com.example.server.ServerLogEntry
 import com.example.server.WebsiteLocalServer
+import com.example.ui.editor.EditorHistoryManager
+import com.example.ui.editor.EditorSnapshot
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -68,6 +70,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _isSiteSettingsOpen = MutableStateFlow(false)
     val isSiteSettingsOpen: StateFlow<Boolean> = _isSiteSettingsOpen.asStateFlow()
 
+    private val _isThemeCustomizerOpen = MutableStateFlow(false)
+    val isThemeCustomizerOpen: StateFlow<Boolean> = _isThemeCustomizerOpen.asStateFlow()
+
     private val _netlifyToken = MutableStateFlow(prefs.getString("netlify_token", "") ?: "")
     val netlifyToken: StateFlow<String> = _netlifyToken.asStateFlow()
 
@@ -86,8 +91,32 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _distZip = MutableStateFlow<File?>(null)
     val distZip: StateFlow<File?> = _distZip.asStateFlow()
 
+    private val _isPremierUnlocked = MutableStateFlow(prefs.getBoolean("premier_unlocked", false))
+    val isPremierUnlocked: StateFlow<Boolean> = _isPremierUnlocked.asStateFlow()
+
     private val _userMessage = MutableStateFlow<String?>(null)
     val userMessage: StateFlow<String?> = _userMessage.asStateFlow()
+
+    private val _selectedPageSlug = MutableStateFlow("index")
+    val selectedPageSlug: StateFlow<String> = _selectedPageSlug.asStateFlow()
+
+    // Undo/Redo State Management
+    private val historyManager = EditorHistoryManager(maxHistorySize = 50)
+
+    private val _canUndo = MutableStateFlow(false)
+    val canUndo: StateFlow<Boolean> = _canUndo.asStateFlow()
+
+    private val _canRedo = MutableStateFlow(false)
+    val canRedo: StateFlow<Boolean> = _canRedo.asStateFlow()
+
+    private val _undoActionTitle = MutableStateFlow<String?>(null)
+    val undoActionTitle: StateFlow<String?> = _undoActionTitle.asStateFlow()
+
+    private val _redoActionTitle = MutableStateFlow<String?>(null)
+    val redoActionTitle: StateFlow<String?> = _redoActionTitle.asStateFlow()
+
+    private val _undoHistoryList = MutableStateFlow<List<EditorSnapshot>>(emptyList())
+    val undoHistoryList: StateFlow<List<EditorSnapshot>> = _undoHistoryList.asStateFlow()
 
     // Template selection screen active before entering editor
     private val _isTemplateSelectionActive = MutableStateFlow(true)
@@ -190,6 +219,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _isSiteSettingsOpen.value = false
     }
 
+    fun openThemeCustomizer() {
+        _isThemeCustomizerOpen.value = true
+    }
+
+    fun closeThemeCustomizer() {
+        _isThemeCustomizerOpen.value = false
+    }
+
     fun editBlock(block: WebBlockEntity) {
         _editingBlock.value = block
     }
@@ -202,8 +239,71 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _userMessage.value = null
     }
 
+    private fun updateHistoryState() {
+        _canUndo.value = historyManager.canUndo
+        _canRedo.value = historyManager.canRedo
+        _undoActionTitle.value = historyManager.undoActionTitle
+        _redoActionTitle.value = historyManager.redoActionTitle
+        _undoHistoryList.value = historyManager.undoHistoryList
+    }
+
+    private fun recordHistory(actionTitle: String) {
+        val site = _currentWebsite.value ?: return
+        val currentBlocks = _blocks.value
+        historyManager.recordAction(site, currentBlocks, actionTitle)
+        updateHistoryState()
+    }
+
+    fun undo() {
+        val currentSite = _currentWebsite.value ?: return
+        val currentBlocks = _blocks.value
+        val restored = historyManager.undo(currentSite, currentBlocks) ?: return
+        updateHistoryState()
+        viewModelScope.launch {
+            repository.updateWebsite(restored.website)
+            repository.replaceAllBlocks(restored.website.id, restored.blocks)
+            _currentWebsite.value = restored.website
+            _blocks.value = restored.blocks
+
+            val restoredPages = SiteCompiler.parsePages(restored.website.pagesJson, restored.website.title)
+            if (restoredPages.none { it.slug == _selectedPageSlug.value }) {
+                _selectedPageSlug.value = "index"
+            }
+
+            recompileSite(restored.website, restored.blocks)
+            _userMessage.value = "Undid: ${restored.actionTitle}"
+        }
+    }
+
+    fun redo() {
+        val currentSite = _currentWebsite.value ?: return
+        val currentBlocks = _blocks.value
+        val restored = historyManager.redo(currentSite, currentBlocks) ?: return
+        updateHistoryState()
+        viewModelScope.launch {
+            repository.updateWebsite(restored.website)
+            repository.replaceAllBlocks(restored.website.id, restored.blocks)
+            _currentWebsite.value = restored.website
+            _blocks.value = restored.blocks
+
+            val restoredPages = SiteCompiler.parsePages(restored.website.pagesJson, restored.website.title)
+            if (restoredPages.none { it.slug == _selectedPageSlug.value }) {
+                _selectedPageSlug.value = "index"
+            }
+
+            recompileSite(restored.website, restored.blocks)
+            _userMessage.value = "Redid: ${restored.actionTitle}"
+        }
+    }
+
+    fun clearHistory() {
+        historyManager.clear()
+        updateHistoryState()
+    }
+
     fun addBlock(type: BlockType, insertIndex: Int = -1) {
         val site = _currentWebsite.value ?: return
+        recordHistory("Add ${type.displayName}")
         viewModelScope.launch {
             val currentList = _blocks.value.toMutableList()
             val newIndex = if (insertIndex in currentList.indices) insertIndex + 1 else currentList.size
@@ -230,6 +330,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     BlockType.LOGOS -> "Trusted By Leading Innovators"
                     BlockType.NEWSLETTER -> "Stay In The Loop"
                     BlockType.CUSTOM_HTML -> "Custom Component"
+                    BlockType.WHATSAPP_SHOP -> "Knot & Weave WhatsApp Store"
+                    BlockType.MULTISTEP_WIZARD -> "Multi-Step Booking & Quote Wizard"
+                    BlockType.COUNTDOWN_TIMER -> "🚀 Launching Very Soon"
+                    BlockType.IMAGE_CAROUSEL -> "Interactive Product Showcase"
                     BlockType.FOOTER -> site.title
                 },
                 subtitle = when (type) {
@@ -241,6 +345,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     BlockType.TIMELINE -> "A seamless, step-by-step workflow designed for rapid execution."
                     BlockType.TEAM -> "Experienced engineers, designers, and creative leaders."
                     BlockType.LOGOS -> "Powering modern teams and forward-thinking enterprises."
+                    BlockType.WHATSAPP_SHOP -> "Artisan Festival • Up to 50% off select handcrafted bags"
+                    BlockType.MULTISTEP_WIZARD -> "Customize options, attach reference photos, and confirm via WhatsApp"
+                    BlockType.COUNTDOWN_TIMER -> "Countdown to our global platform release. Stay tuned!"
+                    BlockType.IMAGE_CAROUSEL -> "Swipe to browse through high-resolution portfolio highlights."
                     else -> ""
                 },
                 content = when (type) {
@@ -257,6 +365,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     BlockType.TEAM -> "Sarah Chen: Chief Executive Officer: Leading product vision and distributed systems engineering.|Marcus Vance: Head of Design: Award-winning art director specializing in tactile typography.|Alex Rivera: Lead Developer Advocate: Full-stack educator and open-source systems contributor."
                     BlockType.LOGOS -> "Google Cloud | Stripe | Vercel | Supabase | GitHub | Docker | Cloudflare"
                     BlockType.CUSTOM_HTML -> "<div style=\"padding: 2rem; background: rgba(99,102,241,0.1); border-radius: 12px; text-align: center;\"><p>Custom HTML / Embed element</p></div>"
+                    BlockType.WHATSAPP_SHOP -> "Lavender Breeze Tote: 1249: 2499: 4.9: Handwoven pastel purple merino wool tote | Crimson Night Crossbody: 899: 1599: 4.5: Crocheted crossbody with leather strap | Earthen Clay Handbag: 1499: 3749: 4.8: Premium terracotta merino wool handbag"
+                    BlockType.MULTISTEP_WIZARD -> "Signature Tier: ₹1,499: Double-barrel edition with custom message & finishes: 🎂 | Deluxe Celebration: ₹2,899: Tiered centerpiece with edible florals & gold leaf: 🌸 | Grand Luxe Masterpiece: ₹5,999: 3-tier architectural cake with custom monogramming: 👑 | Tasting & Mini Tower: ₹999: Assorted 24 gourmet treats with custom ribbon: 🧁"
+                    BlockType.COUNTDOWN_TIMER -> "2026-12-31T00:00:00"
+                    BlockType.IMAGE_CAROUSEL -> "https://images.unsplash.com/photo-1555041469-a586c61ea9bc?w=1200&q=80|https://images.unsplash.com/photo-1524758631624-e2822e304c36?w=1200&q=80|https://images.unsplash.com/photo-1586023492125-27b2c045efd7?w=1200&q=80"
                     BlockType.FOOTER -> "© 2026 ${site.title}. Powered by Web Builder."
                     else -> ""
                 },
@@ -272,6 +384,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     BlockType.TEAM -> "Join Our Team"
                     BlockType.STATS -> "View Metrics"
                     BlockType.NEWSLETTER -> "Subscribe"
+                    BlockType.WHATSAPP_SHOP -> "Order on WhatsApp"
+                    BlockType.MULTISTEP_WIZARD -> "Send Order to WhatsApp"
+                    BlockType.COUNTDOWN_TIMER -> "Claim Early Access"
+                    BlockType.IMAGE_CAROUSEL -> "Explore Gallery"
                     else -> ""
                 },
                 buttonUrl = when (type) {
@@ -287,6 +403,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     BlockType.STATS -> "#pricing"
                     BlockType.TEAM -> "#contact"
                     BlockType.NEWSLETTER -> "#newsletter"
+                    BlockType.WHATSAPP_SHOP, BlockType.MULTISTEP_WIZARD -> "919876543210"
+                    BlockType.COUNTDOWN_TIMER -> "#contact"
+                    BlockType.IMAGE_CAROUSEL -> "#pricing"
                     else -> "#contact"
                 },
                 secondaryButtonText = when (type) {
@@ -296,7 +415,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 secondaryButtonUrl = when (type) {
                     BlockType.HERO -> "#features"
                     else -> ""
-                }
+                },
+                pageSlug = _selectedPageSlug.value
             )
 
             currentList.add(newIndex, newBlock)
@@ -307,6 +427,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun saveEditedBlock(updated: WebBlockEntity) {
+        recordHistory("Edit ${updated.type.displayName}")
         viewModelScope.launch {
             repository.updateBlock(updated)
             val updatedList = _blocks.value.map { if (it.id == updated.id) updated else it }
@@ -318,11 +439,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun toggleBlockVisibility(block: WebBlockEntity) {
+        val action = if (block.isVisible) "Hide" else "Show"
+        recordHistory("$action ${block.type.displayName}")
         val updated = block.copy(isVisible = !block.isVisible)
-        saveEditedBlock(updated)
+        viewModelScope.launch {
+            repository.updateBlock(updated)
+            val updatedList = _blocks.value.map { if (it.id == updated.id) updated else it }
+            _blocks.value = updatedList
+            _currentWebsite.value?.let { recompileSite(it, updatedList) }
+            _userMessage.value = "${action} ${block.type.displayName}"
+        }
     }
 
     fun duplicateBlock(block: WebBlockEntity) {
+        recordHistory("Duplicate ${block.type.displayName}")
         viewModelScope.launch {
             repository.duplicateBlock(block)
             _userMessage.value = "Duplicated ${block.type.displayName}"
@@ -330,6 +460,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun deleteBlock(block: WebBlockEntity) {
+        recordHistory("Delete ${block.type.displayName}")
         viewModelScope.launch {
             repository.deleteBlock(block)
             val remaining = _blocks.value.filter { it.id != block.id }
@@ -341,6 +472,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun moveBlockUp(block: WebBlockEntity) {
         val site = _currentWebsite.value ?: return
+        recordHistory("Move ${block.type.displayName} Up")
         viewModelScope.launch {
             repository.moveBlock(site.id, block.id, -1)
         }
@@ -348,16 +480,83 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun moveBlockDown(block: WebBlockEntity) {
         val site = _currentWebsite.value ?: return
+        recordHistory("Move ${block.type.displayName} Down")
         viewModelScope.launch {
             repository.moveBlock(site.id, block.id, 1)
         }
     }
 
     fun reorderBlocks(newOrder: List<WebBlockEntity>) {
+        recordHistory("Reorder Sections")
         viewModelScope.launch {
             _blocks.value = newOrder
             repository.reorderBlocks(newOrder)
             _currentWebsite.value?.let { recompileSite(it, newOrder) }
+        }
+    }
+
+    fun selectPage(slug: String) {
+        _selectedPageSlug.value = slug.ifBlank { "index" }
+    }
+
+    fun addPage(title: String, slug: String) {
+        val site = _currentWebsite.value ?: return
+        val cleanSlug = slug.trim().lowercase().replace(" ", "-")
+        if (cleanSlug.isBlank() || cleanSlug == "index") return
+
+        val existingPages = SiteCompiler.parsePages(site.pagesJson).toMutableList()
+        if (existingPages.any { it.slug == cleanSlug }) return
+
+        recordHistory("Add Page '$title'")
+
+        val jsonArray = JSONArray()
+        existingPages.forEach { page ->
+            if (page.slug != "index") {
+                val obj = JSONObject()
+                obj.put("slug", page.slug)
+                obj.put("title", page.title)
+                jsonArray.put(obj)
+            }
+        }
+        val newObj = JSONObject()
+        newObj.put("slug", cleanSlug)
+        newObj.put("title", title.ifBlank { cleanSlug.replaceFirstChar { it.uppercase() } })
+        jsonArray.put(newObj)
+
+        val updated = site.copy(pagesJson = jsonArray.toString(), updatedAt = System.currentTimeMillis())
+        viewModelScope.launch {
+            repository.updateWebsite(updated)
+            _currentWebsite.value = updated
+            _selectedPageSlug.value = cleanSlug
+            recompileSite(updated, _blocks.value)
+            _userMessage.value = "Created page: $title"
+        }
+    }
+
+    fun removePage(slug: String) {
+        if (slug == "index") return
+        val site = _currentWebsite.value ?: return
+        val existingPages = SiteCompiler.parsePages(site.pagesJson)
+        val pageToDelete = existingPages.firstOrNull { it.slug == slug }
+        recordHistory("Delete Page '${pageToDelete?.title ?: slug}'")
+        val jsonArray = JSONArray()
+        existingPages.forEach { page ->
+            if (page.slug != "index" && page.slug != slug) {
+                val obj = JSONObject()
+                obj.put("slug", page.slug)
+                obj.put("title", page.title)
+                jsonArray.put(obj)
+            }
+        }
+        val updated = site.copy(pagesJson = jsonArray.toString(), updatedAt = System.currentTimeMillis())
+        viewModelScope.launch {
+            repository.updateWebsite(updated)
+            _currentWebsite.value = updated
+            if (_selectedPageSlug.value == slug) {
+                _selectedPageSlug.value = "index"
+            }
+            recompileSite(updated, _blocks.value)
+            _userMessage.value = "Deleted page"
         }
     }
 
@@ -367,9 +566,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         description: String,
         themePreset: String,
         fontFamily: String,
-        customCss: String
+        customCss: String,
+        animationStyle: String = "fade-up",
+        enableVisitorThemeToggle: Boolean = true,
+        formEndpoint: String = "",
+        ogImageUrl: String = ""
     ) {
         val site = _currentWebsite.value ?: return
+        recordHistory("Update Website Settings")
         val updated = site.copy(
             title = title.ifBlank { "My Website" },
             slug = slug.ifBlank { "my-website" },
@@ -377,6 +581,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             themePreset = themePreset,
             fontFamily = fontFamily,
             customCss = customCss,
+            animationStyle = animationStyle,
+            enableVisitorThemeToggle = enableVisitorThemeToggle,
+            formEndpoint = formEndpoint,
+            ogImageUrl = ogImageUrl,
             updatedAt = System.currentTimeMillis()
         )
         viewModelScope.launch {
@@ -388,7 +596,36 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun updateThemeCustomization(
+        themePreset: String,
+        fontFamily: String,
+        buttonStyle: String,
+        buttonRadius: String,
+        customPrimaryColor: String,
+        customBackgroundColor: String
+    ) {
+        val site = _currentWebsite.value ?: return
+        recordHistory("Customize Theme & Styling")
+        val updated = site.copy(
+            themePreset = themePreset,
+            fontFamily = fontFamily,
+            buttonStyle = buttonStyle,
+            buttonRadius = buttonRadius,
+            customPrimaryColor = customPrimaryColor,
+            customBackgroundColor = customBackgroundColor,
+            updatedAt = System.currentTimeMillis()
+        )
+        viewModelScope.launch {
+            repository.updateWebsite(updated)
+            _currentWebsite.value = updated
+            recompileSite(updated, _blocks.value)
+            _isThemeCustomizerOpen.value = false
+            _userMessage.value = "Applied theme, typography & button styles"
+        }
+    }
+
     fun applyTemplate(template: TemplateDefinition) {
+        recordHistory("Switch Template to ${template.name}")
         viewModelScope.launch {
             val newSite = template.createWebsite().copy(id = 1)
             repository.updateWebsite(newSite)
@@ -415,6 +652,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun selectTemplateAndEnterEditor(template: TemplateDefinition) {
         applyTemplate(template)
         _isTemplateSelectionActive.value = false
+    }
+
+    fun unlockPremier() {
+        prefs.edit().putBoolean("premier_unlocked", true).apply()
+        _isPremierUnlocked.value = true
+        _userMessage.value = "🎉 Premier Templates Unlocked! Enjoy Knot & Weave WhatsApp Store."
     }
 
     fun toggleServer() {
@@ -566,6 +809,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         root.put("themePreset", site.themePreset)
         root.put("fontFamily", site.fontFamily)
         root.put("customCss", site.customCss)
+        root.put("buttonStyle", site.buttonStyle)
+        root.put("buttonRadius", site.buttonRadius)
+        root.put("customPrimaryColor", site.customPrimaryColor)
+        root.put("customBackgroundColor", site.customBackgroundColor)
 
         val arr = JSONArray()
         for (b in blocksList) {
@@ -592,13 +839,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         return try {
             val json = JSONObject(jsonStr)
             val current = _currentWebsite.value ?: return false
+            recordHistory("Import JSON Configuration")
             val updatedSite = current.copy(
                 title = json.optString("title", current.title),
                 slug = json.optString("slug", current.slug),
                 description = json.optString("description", current.description),
                 themePreset = json.optString("themePreset", current.themePreset),
                 fontFamily = json.optString("fontFamily", current.fontFamily),
-                customCss = json.optString("customCss", current.customCss)
+                customCss = json.optString("customCss", current.customCss),
+                buttonStyle = json.optString("buttonStyle", current.buttonStyle),
+                buttonRadius = json.optString("buttonRadius", current.buttonRadius),
+                customPrimaryColor = json.optString("customPrimaryColor", current.customPrimaryColor),
+                customBackgroundColor = json.optString("customBackgroundColor", current.customBackgroundColor)
             )
 
             val blocksArr = json.optJSONArray("blocks") ?: JSONArray()

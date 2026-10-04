@@ -34,6 +34,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Coffee
 import androidx.compose.material.icons.filled.Launch
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.ShoppingCart
@@ -65,6 +66,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.generator.TemplateDefinition
+import com.example.generator.WebsiteTemplates
 import com.example.ui.theme.BrandAmber
 import com.example.ui.theme.BrandCyan
 import com.example.ui.theme.BrandEmerald
@@ -82,6 +84,7 @@ fun TemplateThumbnailGrid(
     onSelectTemplate: (TemplateDefinition) -> Unit,
     onPreviewTemplate: (TemplateDefinition) -> Unit,
     modifier: Modifier = Modifier,
+    isPremierUnlocked: Boolean = false,
     headerContent: (@Composable () -> Unit)? = null,
     emptyContent: (@Composable () -> Unit)? = null
 ) {
@@ -109,7 +112,8 @@ fun TemplateThumbnailGrid(
                 TemplateThumbnailCard(
                     template = template,
                     onSelect = { onSelectTemplate(template) },
-                    onPreview = { onPreviewTemplate(template) }
+                    onPreview = { onPreviewTemplate(template) },
+                    isPremierUnlocked = isPremierUnlocked
                 )
             }
         }
@@ -130,7 +134,8 @@ fun TemplateThumbnailCard(
     template: TemplateDefinition,
     onSelect: () -> Unit,
     onPreview: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    isPremierUnlocked: Boolean = false
 ) {
     val accentColor = getTemplateAccent(template.id)
     val sampleBlocks = remember(template) { template.createBlocks(0) }
@@ -169,20 +174,47 @@ fun TemplateThumbnailCard(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Category Pill
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = Color.Black.copy(alpha = 0.72f),
-                        contentColor = Color.White
-                    ) {
-                        Text(
-                            text = template.badge.ifBlank { template.category },
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                fontSize = 9.sp,
-                                fontWeight = FontWeight.Bold
-                            ),
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                        )
+                    // Category / Premier Pill
+                    if (template.isPremier) {
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = if (isPremierUnlocked) BrandEmerald else BrandAmber,
+                            contentColor = if (isPremierUnlocked) Color.White else Color.Black
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(3.dp)
+                            ) {
+                                Icon(
+                                    imageVector = if (isPremierUnlocked) Icons.Default.Check else Icons.Default.Lock,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(11.dp)
+                                )
+                                Text(
+                                    text = if (isPremierUnlocked) "PREMIER" else "PREMIER",
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        fontSize = 9.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                )
+                            }
+                        }
+                    } else {
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = Color.Black.copy(alpha = 0.72f),
+                            contentColor = Color.White
+                        ) {
+                            Text(
+                                text = template.badge.ifBlank { template.category },
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Bold
+                                ),
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
                     }
 
                     // Theme Color Palette Indicator Dots
@@ -214,6 +246,7 @@ fun TemplateThumbnailCard(
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.weight(1f)
                         )
+                        val is4Bit = WebsiteTemplates.is4BitAnime(template)
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(3.dp),
@@ -224,15 +257,15 @@ fun TemplateThumbnailCard(
                                 .testTag("preview_thumb_btn_${template.id}")
                         ) {
                             Text(
-                                text = "Preview",
+                                text = if (is4Bit) "Quick-Look" else "Preview",
                                 fontSize = 9.5.sp,
                                 fontWeight = FontWeight.SemiBold,
-                                color = BrandCyan
+                                color = if (is4Bit) BrandAmber else BrandCyan
                             )
                             Icon(
-                                imageVector = Icons.Default.Visibility,
+                                imageVector = if (is4Bit) Icons.Default.AutoAwesome else Icons.Default.Visibility,
                                 contentDescription = "Quick Preview ${template.name}",
-                                tint = BrandCyan,
+                                tint = if (is4Bit) BrandAmber else BrandCyan,
                                 modifier = Modifier.size(13.dp)
                             )
                         }
@@ -323,19 +356,37 @@ fun TemplateThumbnailCard(
                             .testTag("select_template_thumb_${template.id}"),
                         contentPadding = PaddingValues(horizontal = 6.dp),
                         shape = RoundedCornerShape(8.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = BrandIndigo)
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (template.isPremier && !isPremierUnlocked) BrandAmber else BrandIndigo
+                        )
                     ) {
-                        Text(
-                            text = "Use",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Spacer(modifier = Modifier.width(3.dp))
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowForward,
-                            contentDescription = null,
-                            modifier = Modifier.size(12.dp)
-                        )
+                        if (template.isPremier && !isPremierUnlocked) {
+                            Icon(
+                                imageVector = Icons.Default.Lock,
+                                contentDescription = null,
+                                tint = Color.Black,
+                                modifier = Modifier.size(12.dp)
+                            )
+                            Spacer(modifier = Modifier.width(3.dp))
+                            Text(
+                                text = "Unlock",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.Black
+                            )
+                        } else {
+                            Text(
+                                text = "Use",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Spacer(modifier = Modifier.width(3.dp))
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                                contentDescription = null,
+                                modifier = Modifier.size(12.dp)
+                            )
+                        }
                     }
                 }
             }

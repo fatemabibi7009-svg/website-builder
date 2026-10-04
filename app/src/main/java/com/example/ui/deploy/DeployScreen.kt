@@ -1169,6 +1169,53 @@ fun DeployScreen(
                             fontWeight = FontWeight.Bold
                         )
                     }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Single Standalone HTML Export (inlined styles + scripts)
+                    OutlinedButton(
+                        onClick = {
+                            if (compiledSite != null) {
+                                try {
+                                    val standaloneHtml = compiledSite.html
+                                        .replace("<link rel=\"stylesheet\" href=\"styles.css\">", "<style>\n${compiledSite.css}\n</style>")
+                                        .replace("<script src=\"main.js\"></script>", "<script>\n${compiledSite.js}\n</script>")
+
+                                    val exportFile = java.io.File(context.cacheDir, "${effectiveSubdomain}-standalone.html")
+                                    exportFile.writeText(standaloneHtml, Charsets.UTF_8)
+
+                                    val uri = FileProvider.getUriForFile(
+                                        context,
+                                        "${context.packageName}.fileprovider",
+                                        exportFile
+                                    )
+                                    val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                        type = "text/html"
+                                        putExtra(Intent.EXTRA_STREAM, uri)
+                                        putExtra(Intent.EXTRA_SUBJECT, "$effectiveSubdomain Single-File HTML")
+                                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                    }
+                                    context.startActivity(Intent.createChooser(shareIntent, "Share Standalone HTML File"))
+                                } catch (e: Exception) {
+                                    // Fallback
+                                }
+                            }
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(44.dp)
+                            .testTag("button_export_single_html"),
+                        shape = RoundedCornerShape(10.dp),
+                        border = BorderStroke(1.dp, BrandIndigo.copy(alpha = 0.5f))
+                    ) {
+                        Icon(imageVector = Icons.Default.Code, contentDescription = null, tint = BrandIndigo, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Export Standalone HTML (Single-file)",
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
                 }
             }
         }

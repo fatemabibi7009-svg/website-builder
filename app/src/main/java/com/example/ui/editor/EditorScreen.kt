@@ -17,6 +17,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -27,15 +29,20 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.PhotoLibrary
+import androidx.compose.material.icons.filled.Redo
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Undo
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -45,6 +52,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -63,9 +71,16 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.WebBlockEntity
 import com.example.data.model.WebsiteEntity
+import com.example.generator.SiteCompiler
 import com.example.ui.theme.BrandCyan
 import com.example.ui.theme.BrandEmerald
 import com.example.ui.theme.BrandIndigo
+
+enum class EditorViewMode {
+    SECTIONS,
+    SPLIT,
+    FULL_PREVIEW
+}
 
 @Composable
 fun EditorScreen(
@@ -80,21 +95,57 @@ fun EditorScreen(
     onToggleVisibility: (WebBlockEntity) -> Unit,
     onOpenSettings: () -> Unit,
     onOpenTemplateSelection: () -> Unit = {},
-    onReorderBlocks: ((List<WebBlockEntity>) -> Unit)? = null
+    onOpenThemeCustomizer: () -> Unit = {},
+    onReorderBlocks: ((List<WebBlockEntity>) -> Unit)? = null,
+    onUpdateBlock: (WebBlockEntity) -> Unit = onEditBlock,
+    selectedPageSlug: String = "index",
+    onSelectPage: (String) -> Unit = {},
+    onAddPage: (title: String, slug: String) -> Unit = { _, _ -> },
+    onRemovePage: (String) -> Unit = {},
+    onUndo: () -> Unit = {},
+    onRedo: () -> Unit = {},
+    canUndo: Boolean = false,
+    canRedo: Boolean = false,
+    undoActionTitle: String? = null,
+    redoActionTitle: String? = null
 ) {
     var localBlocks by remember(blocks) { mutableStateOf(blocks) }
-    var isLivePreviewMode by remember { mutableStateOf(false) }
+    var viewMode by remember { mutableStateOf(EditorViewMode.SECTIONS) }
+    var showAssetManager by remember { mutableStateOf(false) }
     val lazyListState = rememberLazyListState()
+
+    val pages = remember(website?.pagesJson) {
+        SiteCompiler.parsePages(website?.pagesJson ?: "")
+    }
+
+    val pageBlocks = remember(localBlocks, selectedPageSlug) {
+        localBlocks.filter { block ->
+            val slug = block.pageSlug.trim()
+            slug == "all" ||
+            (selectedPageSlug == "index" && (slug.isEmpty() || slug == "index")) ||
+            (selectedPageSlug != "index" && slug == selectedPageSlug)
+        }
+    }
+
+    var showAddPageDialog by remember { mutableStateOf(false) }
+    var newPageTitle by remember { mutableStateOf("") }
+    var newPageSlug by remember { mutableStateOf("") }
 
     val dragDropState = rememberDragDropState(
         lazyListState = lazyListState,
         headerItemCount = 2,
         onMove = { fromIndex, toIndex ->
-            if (fromIndex in localBlocks.indices && toIndex in localBlocks.indices) {
-                val updated = localBlocks.toMutableList()
-                val moved = updated.removeAt(fromIndex)
-                updated.add(toIndex, moved)
-                localBlocks = updated
+            if (fromIndex in pageBlocks.indices && toIndex in pageBlocks.indices) {
+                val fromBlock = pageBlocks[fromIndex]
+                val toBlock = pageBlocks[toIndex]
+                val globalFrom = localBlocks.indexOfFirst { it.id == fromBlock.id }
+                val globalTo = localBlocks.indexOfFirst { it.id == toBlock.id }
+                if (globalFrom != -1 && globalTo != -1) {
+                    val updated = localBlocks.toMutableList()
+                    val moved = updated.removeAt(globalFrom)
+                    updated.add(globalTo, moved)
+                    localBlocks = updated
+                }
             }
         },
         onDragEnd = {
@@ -103,21 +154,59 @@ fun EditorScreen(
     )
 
     Box(modifier = Modifier.fillMaxSize()) {
-        LazyColumn(
-            state = lazyListState,
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 16.dp)
-                .then(
-                    if (!isLivePreviewMode) {
-                        Modifier.dragContainer(dragDropState, enabled = localBlocks.isNotEmpty())
-                    } else {
-                        Modifier
+        if (viewMode == EditorViewMode.FULL_PREVIEW) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(16.dp)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Full Live Website Preview",
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    OutlinedButton(
+                        onClick = { viewMode = EditorViewMode.SECTIONS },
+                        shape = RoundedCornerShape(8.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                    ) {
+                        Text("Back to Sections", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold))
                     }
-                ),
-            contentPadding = PaddingValues(top = 16.dp, bottom = 96.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
+                }
+
+                EditorLivePreviewPane(
+                    website = website,
+                    blocks = localBlocks,
+                    isExpanded = true,
+                    activePageSlug = selectedPageSlug,
+                    onSelectPage = onSelectPage,
+                    onClose = { viewMode = EditorViewMode.SECTIONS },
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+        } else {
+            Column(modifier = Modifier.fillMaxSize()) {
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                ) {
+                    LazyColumn(
+                        state = lazyListState,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 16.dp)
+                            .dragContainer(dragDropState, enabled = localBlocks.isNotEmpty()),
+                        contentPadding = PaddingValues(top = 16.dp, bottom = if (viewMode == EditorViewMode.SPLIT) 16.dp else 96.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
             // Header Info Card
             item {
                 Card(
@@ -169,21 +258,98 @@ fun EditorScreen(
                                         modifier = Modifier
                                             .clip(CircleShape)
                                             .background(BrandCyan.copy(alpha = 0.15f))
+                                            .clickable { onOpenThemeCustomizer() }
                                             .padding(horizontal = 8.dp, vertical = 2.dp)
                                     ) {
-                                        Text(
-                                            text = website?.themePreset ?: "modern-dark",
-                                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                                            color = BrandCyan
-                                        )
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Palette,
+                                                contentDescription = null,
+                                                tint = BrandCyan,
+                                                modifier = Modifier.size(10.dp)
+                                            )
+                                            Text(
+                                                text = website?.themePreset ?: "modern-dark",
+                                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                                color = BrandCyan
+                                            )
+                                        }
+                                    }
+                                    if (!website?.fontFamily.isNullOrBlank()) {
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(CircleShape)
+                                                .background(MaterialTheme.colorScheme.surfaceVariant)
+                                                .clickable { onOpenThemeCustomizer() }
+                                                .padding(horizontal = 8.dp, vertical = 2.dp)
+                                        ) {
+                                            Text(
+                                                text = website!!.fontFamily.substringBefore(","),
+                                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium),
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
                                     }
                                 }
                             }
 
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
                             ) {
+                                IconButton(
+                                    onClick = onUndo,
+                                    enabled = canUndo,
+                                    modifier = Modifier
+                                        .size(32.dp)
+                                        .testTag("button_editor_undo")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Undo,
+                                        contentDescription = if (!undoActionTitle.isNullOrBlank()) "Undo: $undoActionTitle" else "Undo",
+                                        tint = if (canUndo) BrandIndigo else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.35f),
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+
+                                IconButton(
+                                    onClick = onRedo,
+                                    enabled = canRedo,
+                                    modifier = Modifier
+                                        .size(32.dp)
+                                        .testTag("button_editor_redo")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Redo,
+                                        contentDescription = if (!redoActionTitle.isNullOrBlank()) "Redo: $redoActionTitle" else "Redo",
+                                        tint = if (canRedo) BrandIndigo else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.35f),
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+
+                                OutlinedButton(
+                                    onClick = onOpenThemeCustomizer,
+                                    shape = RoundedCornerShape(8.dp),
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                                    modifier = Modifier.testTag("button_open_theme_customizer")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Palette,
+                                        contentDescription = "Customize Theme & Styles",
+                                        tint = BrandIndigo,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        "Theme",
+                                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                }
+
                                 OutlinedButton(
                                     onClick = onOpenTemplateSelection,
                                     shape = RoundedCornerShape(8.dp),
@@ -204,6 +370,26 @@ fun EditorScreen(
                                     )
                                 }
 
+                                OutlinedButton(
+                                    onClick = { showAssetManager = true },
+                                    shape = RoundedCornerShape(8.dp),
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                                    modifier = Modifier.testTag("button_open_asset_manager")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.PhotoLibrary,
+                                        contentDescription = "Manage Photos & Assets",
+                                        tint = BrandIndigo,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        "Photos",
+                                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                }
+
                                 IconButton(
                                     onClick = onOpenSettings,
                                     modifier = Modifier.testTag("button_open_settings")
@@ -219,7 +405,7 @@ fun EditorScreen(
 
                         Spacer(modifier = Modifier.height(14.dp))
 
-                        // In-Editor Mode Toggle: Blocks Hierarchy vs Live Visual Editor
+                        // In-Editor Mode Toggle: Sections vs Split Live Pane vs Full Live Preview
                         Surface(
                             shape = RoundedCornerShape(10.dp),
                             color = MaterialTheme.colorScheme.surface,
@@ -234,25 +420,25 @@ fun EditorScreen(
                                     modifier = Modifier
                                         .weight(1f)
                                         .clip(RoundedCornerShape(8.dp))
-                                        .background(if (!isLivePreviewMode) BrandIndigo else Color.Transparent)
-                                        .clickable { isLivePreviewMode = false }
+                                        .background(if (viewMode == EditorViewMode.SECTIONS) BrandIndigo else Color.Transparent)
+                                        .clickable { viewMode = EditorViewMode.SECTIONS }
                                         .padding(vertical = 8.dp)
                                         .testTag("tab_editor_sections"),
                                     contentAlignment = Alignment.Center
                                 ) {
-                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                                         Icon(
                                             imageVector = Icons.Default.DragHandle,
                                             contentDescription = null,
-                                            tint = if (!isLivePreviewMode) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
-                                            modifier = Modifier.size(15.dp)
+                                            tint = if (viewMode == EditorViewMode.SECTIONS) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.size(14.dp)
                                         )
                                         Text(
-                                            text = "Sections List (${localBlocks.size})",
-                                            style = MaterialTheme.typography.labelMedium.copy(
-                                                fontWeight = if (!isLivePreviewMode) FontWeight.Bold else FontWeight.Normal
+                                            text = "Sections (${localBlocks.size})",
+                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                fontWeight = if (viewMode == EditorViewMode.SECTIONS) FontWeight.Bold else FontWeight.Normal
                                             ),
-                                            color = if (!isLivePreviewMode) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
+                                            color = if (viewMode == EditorViewMode.SECTIONS) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
                                         )
                                     }
                                 }
@@ -261,25 +447,148 @@ fun EditorScreen(
                                     modifier = Modifier
                                         .weight(1f)
                                         .clip(RoundedCornerShape(8.dp))
-                                        .background(if (isLivePreviewMode) BrandIndigo else Color.Transparent)
-                                        .clickable { isLivePreviewMode = true }
+                                        .background(if (viewMode == EditorViewMode.SPLIT) BrandIndigo else Color.Transparent)
+                                        .clickable { viewMode = EditorViewMode.SPLIT }
                                         .padding(vertical = 8.dp)
-                                        .testTag("tab_editor_live_preview"),
+                                        .testTag("tab_editor_split_pane"),
                                     contentAlignment = Alignment.Center
                                 ) {
-                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        Icon(
+                                            imageVector = Icons.Default.AutoAwesome,
+                                            contentDescription = null,
+                                            tint = if (viewMode == EditorViewMode.SPLIT) Color.White else BrandCyan,
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                        Text(
+                                            text = "Split Live",
+                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                fontWeight = if (viewMode == EditorViewMode.SPLIT) FontWeight.Bold else FontWeight.Normal
+                                            ),
+                                            color = if (viewMode == EditorViewMode.SPLIT) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(if (viewMode == EditorViewMode.FULL_PREVIEW) BrandIndigo else Color.Transparent)
+                                        .clickable { viewMode = EditorViewMode.FULL_PREVIEW }
+                                        .padding(vertical = 8.dp)
+                                        .testTag("tab_editor_full_preview"),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                                         Icon(
                                             imageVector = Icons.Default.Visibility,
                                             contentDescription = null,
-                                            tint = if (isLivePreviewMode) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
-                                            modifier = Modifier.size(15.dp)
+                                            tint = if (viewMode == EditorViewMode.FULL_PREVIEW) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.size(14.dp)
                                         )
                                         Text(
-                                            text = "Live Visual Editor",
-                                            style = MaterialTheme.typography.labelMedium.copy(
-                                                fontWeight = if (isLivePreviewMode) FontWeight.Bold else FontWeight.Normal
+                                            text = "Full Preview",
+                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                fontWeight = if (viewMode == EditorViewMode.FULL_PREVIEW) FontWeight.Bold else FontWeight.Normal
                                             ),
-                                            color = if (isLivePreviewMode) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
+                                            color = if (viewMode == EditorViewMode.FULL_PREVIEW) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        // Multi-Page Selector Bar
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("editor_page_tabs_bar")
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState())
+                                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Text(
+                                    text = "PAGES:",
+                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(end = 2.dp)
+                                )
+                                for (pg in pages) {
+                                    val isCurrentPage = pg.slug == selectedPageSlug
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = if (isCurrentPage) BrandIndigo else MaterialTheme.colorScheme.surface,
+                                        border = if (isCurrentPage) null else BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)),
+                                        modifier = Modifier
+                                            .clickable { onSelectPage(pg.slug) }
+                                            .testTag("page_tab_${pg.slug}")
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            Text(
+                                                text = if (pg.slug == "index") "🏠 ${pg.title}" else "📄 ${pg.title}",
+                                                style = MaterialTheme.typography.labelSmall.copy(
+                                                    fontWeight = if (isCurrentPage) FontWeight.Bold else FontWeight.Normal
+                                                ),
+                                                color = if (isCurrentPage) Color.White else MaterialTheme.colorScheme.onSurface
+                                            )
+                                            if (pg.slug != "index") {
+                                                Icon(
+                                                    imageVector = Icons.Default.Close,
+                                                    contentDescription = "Remove page ${pg.title}",
+                                                    tint = if (isCurrentPage) Color.White.copy(alpha = 0.8f) else MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    modifier = Modifier
+                                                        .size(13.dp)
+                                                        .clickable {
+                                                            onRemovePage(pg.slug)
+                                                        }
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // Add Page button
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = MaterialTheme.colorScheme.surface,
+                                    border = BorderStroke(1.dp, BrandIndigo.copy(alpha = 0.5f)),
+                                    modifier = Modifier
+                                        .clickable {
+                                            newPageTitle = ""
+                                            newPageSlug = ""
+                                            showAddPageDialog = true
+                                        }
+                                        .testTag("button_add_page")
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Add,
+                                            contentDescription = null,
+                                            tint = BrandIndigo,
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                        Text(
+                                            text = "Add Page",
+                                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                            color = BrandIndigo
                                         )
                                     }
                                 }
@@ -298,8 +607,9 @@ fun EditorScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    val currentPageName = pages.firstOrNull { it.slug == selectedPageSlug }?.title ?: "Home"
                     Text(
-                        text = if (!isLivePreviewMode) "LAYOUT SECTIONS" else "INTERACTIVE LIVE EDITOR",
+                        text = "$currentPageName Sections (${pageBlocks.size})".uppercase(),
                         style = MaterialTheme.typography.labelSmall.copy(
                             fontWeight = FontWeight.Bold,
                             letterSpacing = 1.sp
@@ -307,24 +617,24 @@ fun EditorScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Text(
-                        text = if (!isLivePreviewMode) "Drag ⠿ handle to reorder" else "Tap any section to edit in-place",
+                        text = "Drag ⠿ handle to reorder in real-time",
                         style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium),
                         color = BrandCyan
                     )
                 }
             }
 
-            // Blocks List or Live In-Editor Preview
-            if (localBlocks.isEmpty()) {
+            // Blocks List
+            if (pageBlocks.isEmpty()) {
                 item {
                     EmptyBlocksView(
                         onAddBlockClick = onAddBlockClick,
                         onOpenTemplateSelection = onOpenTemplateSelection
                     )
                 }
-            } else if (!isLivePreviewMode) {
+            } else {
                 itemsIndexed(
-                    items = localBlocks,
+                    items = pageBlocks,
                     key = { _, block -> block.id }
                 ) { index, block ->
                     Box(
@@ -335,7 +645,7 @@ fun EditorScreen(
                     ) {
                         BlockItemCard(
                             index = index,
-                            totalCount = localBlocks.size,
+                            totalCount = pageBlocks.size,
                             block = block,
                             dragDropState = dragDropState,
                             onClick = { onEditBlock(block) },
@@ -347,44 +657,32 @@ fun EditorScreen(
                         )
                     }
                 }
-            } else {
-                // Live In-Editor Visual Sections: Click any section to edit in the same area!
-                val visibleBlocks = localBlocks.filter { it.isVisible }
-                itemsIndexed(
-                    items = visibleBlocks,
-                    key = { _, block -> "live_${block.id}" }
-                ) { index, block ->
-                    Column(modifier = Modifier.fillMaxWidth()) {
-                        LiveBlockVisualPreview(
-                            block = block,
-                            website = website,
-                            isInteractive = true,
-                            onEditSection = { onEditBlock(block) },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .testTag("live_preview_section_${block.id}")
-                        )
-
-                        Spacer(modifier = Modifier.height(4.dp))
-                    }
-                }
-
-                item {
-                    OutlinedButton(
-                        onClick = onAddBlockClick,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 8.dp)
-                            .testTag("btn_add_section_in_live_preview"),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Icon(imageVector = Icons.Default.Add, contentDescription = null, tint = BrandIndigo)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Add New Section to Website", fontWeight = FontWeight.Bold, color = BrandIndigo)
-                    }
-                }
             }
         }
+    }
+
+    if (viewMode == EditorViewMode.SPLIT) {
+        // Bottom pane: In-Editor Live Preview Pane that renders real-time changes as users drag and drop
+        Box(
+            modifier = Modifier
+                .weight(1.15f)
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 6.dp)
+        ) {
+            EditorLivePreviewPane(
+                website = website,
+                blocks = localBlocks,
+                isDragging = dragDropState.isDragging,
+                draggingItemIndex = dragDropState.draggingItemIndex,
+                activePageSlug = selectedPageSlug,
+                onSelectPage = onSelectPage,
+                onClose = { viewMode = EditorViewMode.SECTIONS },
+                modifier = Modifier.fillMaxSize()
+            )
+        }
+    }
+}
+}
 
         // Active dragging status pill
         AnimatedVisibility(
@@ -420,24 +718,105 @@ fun EditorScreen(
             }
         }
 
-        // Floating Action Button to Add Block
-        FloatingActionButton(
-            onClick = onAddBlockClick,
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(20.dp)
-                .testTag("fab_add_block"),
-            containerColor = BrandIndigo,
-            contentColor = Color.White
-        ) {
-            Row(
-                modifier = Modifier.padding(horizontal = 14.dp),
-                verticalAlignment = Alignment.CenterVertically
+        if (viewMode != EditorViewMode.FULL_PREVIEW) {
+            FloatingActionButton(
+                onClick = onAddBlockClick,
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(20.dp)
+                    .testTag("fab_add_block"),
+                containerColor = BrandIndigo,
+                contentColor = Color.White
             ) {
-                Icon(imageVector = Icons.Default.Add, contentDescription = "Add Section")
-                Spacer(modifier = Modifier.width(6.dp))
-                Text("Add Section", fontWeight = FontWeight.Bold)
+                Row(
+                    modifier = Modifier.padding(horizontal = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(imageVector = Icons.Default.Add, contentDescription = "Add Section")
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Add Section", fontWeight = FontWeight.Bold)
+                }
             }
+        }
+
+        if (showAssetManager) {
+            TemplateAssetManagerSheet(
+                website = website,
+                blocks = localBlocks,
+                onUpdateBlock = { updated ->
+                    val newBlocks = localBlocks.map { if (it.id == updated.id) updated else it }
+                    localBlocks = newBlocks
+                    onUpdateBlock(updated)
+                },
+                onDismiss = { showAssetManager = false }
+            )
+        }
+
+        if (showAddPageDialog) {
+            AlertDialog(
+                onDismissRequest = { showAddPageDialog = false },
+                title = { Text("Add New Page", fontWeight = FontWeight.Bold) },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text(
+                            text = "Create a secondary page (e.g. About, Contact, Portfolio). Sections can be placed specifically on this page.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        OutlinedTextField(
+                            value = newPageTitle,
+                            onValueChange = {
+                                newPageTitle = it
+                                if (newPageSlug.isBlank() || newPageSlug == newPageTitle.lowercase().dropLast(1)) {
+                                    newPageSlug = it.lowercase().trim().replace(Regex("[^a-z0-9]+"), "-")
+                                }
+                            },
+                            label = { Text("Page Title") },
+                            placeholder = { Text("e.g. About Us, Services, Portfolio") },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("input_new_page_title"),
+                            shape = RoundedCornerShape(10.dp)
+                        )
+                        OutlinedTextField(
+                            value = newPageSlug,
+                            onValueChange = { newPageSlug = it.lowercase().replace(" ", "-") },
+                            label = { Text("URL Slug (e.g. about, services)") },
+                            placeholder = { Text("e.g. about") },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("input_new_page_slug"),
+                            shape = RoundedCornerShape(10.dp)
+                        )
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            if (newPageTitle.isNotBlank()) {
+                                val cleanSlug = newPageSlug.ifBlank {
+                                    newPageTitle.lowercase().trim().replace(Regex("[^a-z0-9]+"), "-")
+                                }
+                                onAddPage(newPageTitle, cleanSlug)
+                                showAddPageDialog = false
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = BrandIndigo),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.testTag("confirm_create_page_button")
+                    ) {
+                        Text("Create Page", fontWeight = FontWeight.Bold)
+                    }
+                },
+                dismissButton = {
+                    OutlinedButton(
+                        onClick = { showAddPageDialog = false },
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Text("Cancel")
+                    }
+                }
+            )
         }
     }
 }
@@ -525,6 +904,47 @@ fun BlockItemCard(
                             style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
                             color = if (isDragging) BrandCyan else if (isDimmed) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f) else MaterialTheme.colorScheme.onSurface
                         )
+                        if (block.pageSlug == "all") {
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Surface(
+                                shape = RoundedCornerShape(4.dp),
+                                color = BrandIndigo.copy(alpha = 0.15f)
+                            ) {
+                                Text(
+                                    text = "🌐 Global",
+                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                    color = BrandIndigo,
+                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                )
+                            }
+                        } else if (block.pageSlug.isNotBlank() && block.pageSlug != "index") {
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Surface(
+                                shape = RoundedCornerShape(4.dp),
+                                color = MaterialTheme.colorScheme.surfaceVariant
+                            ) {
+                                Text(
+                                    text = "📄 ${block.pageSlug}",
+                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                )
+                            }
+                        }
+                        if (block.animationEffect.isNotBlank() && block.animationEffect != "default" && block.animationEffect != "none") {
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Surface(
+                                shape = RoundedCornerShape(4.dp),
+                                color = BrandCyan.copy(alpha = 0.15f)
+                            ) {
+                                Text(
+                                    text = "✨ ${block.animationEffect}",
+                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium),
+                                    color = BrandCyan,
+                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                )
+                            }
+                        }
                         if (!block.isVisible) {
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(

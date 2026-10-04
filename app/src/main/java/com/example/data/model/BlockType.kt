@@ -90,6 +90,26 @@ enum class BlockType(
         category = "Advanced",
         description = "Raw HTML, Tailwind classes, or embeddable iframe widgets"
     ),
+    WHATSAPP_SHOP(
+        displayName = "WhatsApp Shop & Multi-Step Checkout",
+        category = "Commerce",
+        description = "Interactive e-commerce catalog, cart drawer, photo upload, 3-step checkout and WhatsApp order dispatch"
+    ),
+    MULTISTEP_WIZARD(
+        displayName = "Multi-Step Booking & Quote Wizard",
+        category = "Conversion",
+        description = "Interactive 4-step wizard with selection cards, custom options, photo upload, price estimator, and WhatsApp dispatch"
+    ),
+    COUNTDOWN_TIMER(
+        displayName = "Launch Countdown Timer",
+        category = "Conversion",
+        description = "Live JavaScript ticking countdown with days, hours, minutes, and seconds cards"
+    ),
+    IMAGE_CAROUSEL(
+        displayName = "Interactive Carousel / Slider",
+        category = "Media",
+        description = "Touch-swipeable and arrow-navigated image carousel with caption cards and indicators"
+    ),
     FOOTER(
         displayName = "Footer",
         category = "Footer",

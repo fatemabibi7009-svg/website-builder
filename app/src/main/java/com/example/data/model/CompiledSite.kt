@@ -6,6 +6,7 @@ data class CompiledSite(
     val js: String,
     val manifestJson: String,
     val readme: String,
-    val fileCount: Int = 5,
-    val totalSizeBytes: Long = (html.length + css.length + js.length + manifestJson.length + readme.length).toLong()
+    val additionalPages: Map<String, String> = emptyMap(),
+    val fileCount: Int = 5 + additionalPages.size,
+    val totalSizeBytes: Long = (html.length + css.length + js.length + manifestJson.length + readme.length + additionalPages.values.sumOf { it.length }).toLong()
 )
